@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Config with secrets
+config.toml
+
+# Screenshots (test artifacts)
+screenshots/
+*.png
+
+# Virtual environments
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
