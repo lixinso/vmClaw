@@ -43,6 +43,8 @@ PROVIDERS = {
         "name": "GitHub Models (Copilot)",
         "key_env": "GITHUB_TOKEN",
         "models": [
+            "claude-opus-4.6",
+            "claude-sonnet-4.6",
             "openai/gpt-5-mini",
             "openai/gpt-4o",
             "openai/gpt-4o-mini",

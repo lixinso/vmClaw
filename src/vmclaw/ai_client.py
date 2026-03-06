@@ -47,7 +47,19 @@ Rules:
 """
 
 
-GITHUB_MODELS_BASE_URL = "https://models.github.ai/inference"
+GITHUB_INFERENCE_URL = "https://models.github.ai/inference"
+GITHUB_COPILOT_URL = "https://api.githubcopilot.com"
+
+
+def _github_base_url(model: str) -> str:
+    """Pick the right GitHub API endpoint for a model.
+
+    Claude models are only available via the Copilot API, while OpenAI and
+    other models use the GitHub Models inference endpoint.
+    """
+    if model.startswith("claude-"):
+        return GITHUB_COPILOT_URL
+    return GITHUB_INFERENCE_URL
 
 
 def _create_client(config: Config) -> OpenAI:
@@ -55,13 +67,13 @@ def _create_client(config: Config) -> OpenAI:
 
     Supports:
         - "openai": Direct OpenAI API (default)
-        - "github": GitHub Models API (uses GitHub PAT token)
+        - "github": GitHub Models / Copilot API (uses GitHub PAT token)
 
     If api_base_url is set in config, it overrides the provider's default URL.
     """
     if config.provider == "github":
         api_key = config.github_token
-        base_url = config.api_base_url or GITHUB_MODELS_BASE_URL
+        base_url = config.api_base_url or _github_base_url(config.model)
         if not api_key:
             raise ValueError(
                 "GitHub provider selected but no token configured. "
