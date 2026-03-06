@@ -18,6 +18,7 @@ def _fix_stdout_encoding() -> None:
 from .config import load_config
 from .capture import capture_and_resize, save_screenshot
 from .discovery import find_vm_windows, select_vm_window
+from .orchestrator import run_task
 
 
 def cmd_list(args: argparse.Namespace) -> None:
@@ -70,9 +71,49 @@ def cmd_capture(args: argparse.Namespace) -> None:
 
 
 def cmd_run(args: argparse.Namespace) -> None:
-    """Run the agent loop (placeholder for future implementation)."""
+    """Run the agent loop on a selected VM window."""
+    config = load_config()
+
+    if not config.openai_api_key:
+        print("Error: No OpenAI API key configured.")
+        print("Set OPENAI_API_KEY environment variable or add it to config.toml")
+        return
+
     print("vmClaw - VM Computer Use Agent\n")
-    print("Agent loop not yet implemented. Use 'vmclaw capture' to test window capture.")
+    print("Discovering VM windows...")
+
+    vm = select_vm_window(config.window_keywords)
+    if vm is None:
+        print("No window selected.")
+        return
+
+    print(f"\nSelected: {vm.title}")
+
+    # Single-task mode if --task is provided
+    if args.task:
+        try:
+            run_task(vm, args.task, config)
+        except KeyboardInterrupt:
+            print("\n\nTask interrupted by user.")
+        return
+
+    # Interactive task loop
+    while True:
+        print()
+        task = input("Enter task (or 'quit'): ").strip()
+        if task.lower() in ("quit", "q", "exit"):
+            break
+        if not task:
+            continue
+
+        try:
+            run_task(vm, task, config)
+        except KeyboardInterrupt:
+            print("\n\nTask interrupted by user.")
+        except Exception as e:
+            print(f"\nError: {e}")
+
+    print("Goodbye.")
 
 
 def main() -> None:
@@ -97,8 +138,9 @@ def main() -> None:
     sub_capture.add_argument("-o", "--output", help="Output file path (default: screenshot.png)")
     sub_capture.set_defaults(func=cmd_capture)
 
-    # run (placeholder)
+    # run
     sub_run = subparsers.add_parser("run", help="Run the agent loop on a VM")
+    sub_run.add_argument("-t", "--task", help="Task to execute (skips interactive prompt)")
     sub_run.set_defaults(func=cmd_run)
 
     args = parser.parse_args()
