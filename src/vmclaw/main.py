@@ -74,9 +74,14 @@ def cmd_run(args: argparse.Namespace) -> None:
     """Run the agent loop on a selected VM window."""
     config = load_config()
 
-    if not config.openai_api_key:
+    if config.provider == "github" and not config.github_token:
+        print("Error: GitHub provider selected but no token configured.")
+        print("Set GITHUB_TOKEN environment variable or add github_token to config.toml")
+        return
+    elif config.provider == "openai" and not config.openai_api_key:
         print("Error: No OpenAI API key configured.")
-        print("Set OPENAI_API_KEY environment variable or add it to config.toml")
+        print("Set OPENAI_API_KEY environment variable or add openai_api_key to config.toml")
+        print("Tip: To use GitHub Copilot instead, set GITHUB_TOKEN and provider = \"github\"")
         return
 
     print("vmClaw - VM Computer Use Agent\n")

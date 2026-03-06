@@ -45,6 +45,12 @@ def load_config(path: Path | None = None) -> Config:
 
         if api.get("openai_api_key"):
             config.openai_api_key = api["openai_api_key"]
+        if api.get("github_token"):
+            config.github_token = api["github_token"]
+        if api.get("provider"):
+            config.provider = api["provider"]
+        if api.get("api_base_url"):
+            config.api_base_url = api["api_base_url"]
         if api.get("model"):
             config.model = api["model"]
         if agent.get("max_actions"):
@@ -61,8 +67,20 @@ def load_config(path: Path | None = None) -> Config:
     if env_key:
         config.openai_api_key = env_key
 
+    env_github = os.environ.get("GITHUB_TOKEN")
+    if env_github:
+        config.github_token = env_github
+
+    env_provider = os.environ.get("VMCLAW_PROVIDER")
+    if env_provider:
+        config.provider = env_provider
+
     env_model = os.environ.get("VMCLAW_MODEL")
     if env_model:
         config.model = env_model
+
+    # Auto-detect provider if not explicitly set and only one key is available
+    if config.provider == "openai" and not config.openai_api_key and config.github_token:
+        config.provider = "github"
 
     return config

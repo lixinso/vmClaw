@@ -1,9 +1,26 @@
 [api]
+# Provider: "openai" (default) or "github" (GitHub Models via Copilot)
+# Can also be set via VMCLAW_PROVIDER environment variable
+provider = "openai"
+
 # OpenAI API key (or set OPENAI_API_KEY environment variable)
+# Required when provider = "openai"
 openai_api_key = "sk-..."
 
-# Model to use for vision
+# GitHub Personal Access Token with models:read scope
+# (or set GITHUB_TOKEN environment variable)
+# Required when provider = "github"
+# github_token = "ghp_..."
+
+# Model to use for vision (or set VMCLAW_MODEL environment variable)
+# OpenAI examples: "gpt-4o", "gpt-4o-mini"
+# GitHub Models examples: "openai/gpt-4o", "openai/gpt-4o-mini", "openai/o4-mini"
 model = "gpt-4o"
+
+# Optional: override the API base URL for any provider
+# Default for openai: https://api.openai.com/v1
+# Default for github: https://models.github.ai/inference
+# api_base_url = ""
 
 [agent]
 # Maximum actions per task before stopping
@@ -16,5 +33,5 @@ action_delay = 1.0
 screenshot_width = 1024
 
 [vm]
-# Keywords to match VM window titles (comma-separated)
+# Keywords to match VM window titles
 window_keywords = ["vmconnect", "vmware", "virtualbox", "qemu", "hyper-v"]

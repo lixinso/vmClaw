@@ -1,4 +1,4 @@
-"""AI client - send screenshots to OpenAI and get actions back."""
+"""AI client - send screenshots to an AI vision model and get actions back."""
 
 from __future__ import annotations
 
@@ -47,6 +47,42 @@ Rules:
 """
 
 
+GITHUB_MODELS_BASE_URL = "https://models.github.ai/inference"
+
+
+def _create_client(config: Config) -> OpenAI:
+    """Create an OpenAI-compatible client based on the configured provider.
+
+    Supports:
+        - "openai": Direct OpenAI API (default)
+        - "github": GitHub Models API (uses GitHub PAT token)
+
+    If api_base_url is set in config, it overrides the provider's default URL.
+    """
+    if config.provider == "github":
+        api_key = config.github_token
+        base_url = config.api_base_url or GITHUB_MODELS_BASE_URL
+        if not api_key:
+            raise ValueError(
+                "GitHub provider selected but no token configured. "
+                "Set GITHUB_TOKEN environment variable or github_token in config.toml"
+            )
+    else:
+        api_key = config.openai_api_key
+        base_url = config.api_base_url or None
+        if not api_key:
+            raise ValueError(
+                "OpenAI provider selected but no API key configured. "
+                "Set OPENAI_API_KEY environment variable or openai_api_key in config.toml"
+            )
+
+    kwargs: dict = {"api_key": api_key}
+    if base_url:
+        kwargs["base_url"] = base_url
+
+    return OpenAI(**kwargs)
+
+
 def _image_to_base64(img: Image.Image, fmt: str = "PNG") -> str:
     """Convert a PIL Image to a base64-encoded data URL."""
     buf = BytesIO()
@@ -77,7 +113,7 @@ def ask_ai(
         ValueError: If the AI response cannot be parsed.
         openai.OpenAIError: On API errors.
     """
-    client = OpenAI(api_key=config.openai_api_key)
+    client = _create_client(config)
 
     # Build history context
     history_text = ""

@@ -51,7 +51,10 @@ class VMWindow:
 
 @dataclass
 class Config:
+    provider: str = "openai"  # "openai" or "github"
     openai_api_key: str = ""
+    github_token: str = ""
+    api_base_url: str = ""  # Optional override for any provider
     model: str = "gpt-4o"
     max_actions: int = 50
     action_delay: float = 1.0
