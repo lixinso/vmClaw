@@ -83,6 +83,25 @@ def _find_gh_cli() -> str | None:
     return None
 
 
+def _gh_get_existing_token() -> str | None:
+    """Check if gh CLI is already authenticated and return the token if so."""
+    gh_path = _find_gh_cli()
+    if not gh_path:
+        return None
+
+    try:
+        result = subprocess.run(
+            [gh_path, "auth", "token"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except Exception:
+        pass
+
+    return None
+
+
 def _gh_auth_login() -> str | None:
     """Authenticate with GitHub via gh CLI web login. Returns token or None."""
     gh_path = _find_gh_cli()
@@ -126,8 +145,18 @@ def _gh_auth_login() -> str | None:
 def _prompt_github_auth(config):
     """Prompt user to authenticate with GitHub when no token is found.
 
+    First checks if gh CLI is already authenticated. If so, uses that token
+    without prompting. Otherwise, offers browser login or manual token entry.
+
     Returns updated config with token set, or None if auth fails.
     """
+    # Check for existing gh CLI session first
+    existing_token = _gh_get_existing_token()
+    if existing_token:
+        print("\nFound existing GitHub CLI session.")
+        config.github_token = existing_token
+        return config
+
     print("\nNo GitHub token found. How would you like to authenticate?\n")
     print("  [1] Login with browser (requires GitHub CLI)")
     print("  [2] Enter token manually (PAT with models:read scope)")
@@ -226,37 +255,60 @@ def _select_provider(config):
 
 
 def _fetch_github_models(token: str) -> list[str]:
-    """Fetch available vision-capable models from the GitHub Copilot API.
+    """Fetch available vision-capable models from GitHub.
+
+    Tries the GitHub Models inference endpoint first (authoritative for what
+    models actually work there), then falls back to the Copilot catalog API
+    filtered to models with a publisher prefix (e.g. ``openai/gpt-4o``).
 
     Returns a list of model IDs, or an empty list on failure.
     """
-    url = "https://api.githubcopilot.com/models"
-    req = urllib.request.Request(url, headers={
-        "Authorization": f"Bearer {token}",
-        "Accept": "application/json",
-    })
-    try:
-        resp = urllib.request.urlopen(req, timeout=10)
-        data = json.loads(resp.read())
-    except Exception:
-        return []
+    # Endpoints to try, in priority order
+    endpoints = [
+        "https://models.github.ai/inference/models",
+        "https://api.githubcopilot.com/models",
+    ]
 
-    models = []
-    seen = set()
-    for m in data.get("data", []):
-        mid = m.get("id", "")
-        if not mid or mid in seen:
+    for url in endpoints:
+        req = urllib.request.Request(url, headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/json",
+        })
+        try:
+            resp = urllib.request.urlopen(req, timeout=10)
+            data = json.loads(resp.read())
+        except Exception:
             continue
-        seen.add(mid)
 
-        # Only include chat models with vision support (vmClaw needs to send screenshots)
-        caps = m.get("capabilities", {})
-        limits = caps.get("limits", {})
-        has_vision = limits.get("vision") is not None
-        if has_vision:
+        models = []
+        seen = set()
+        for m in data.get("data", []):
+            mid = m.get("id", "")
+            if not mid or mid in seen:
+                continue
+            seen.add(mid)
+
+            # Only include chat models with vision support
+            caps = m.get("capabilities", {})
+            limits = caps.get("limits", {})
+            has_vision = limits.get("vision") is not None
+            if not has_vision:
+                continue
+
+            # When using the Copilot catalog, only keep models with a
+            # publisher prefix (e.g. "openai/gpt-4o") since those are the
+            # format that works with models.github.ai/inference.  Models
+            # without a prefix (e.g. "gpt-5.4") exist only in the Copilot
+            # ecosystem and return 404 on the inference endpoint.
+            if "copilot" in url and "/" not in mid:
+                continue
+
             models.append(mid)
 
-    return sorted(models)
+        if models:
+            return sorted(models)
+
+    return []
 
 
 def _select_model(config):
