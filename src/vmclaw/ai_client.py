@@ -142,7 +142,7 @@ def ask_ai(
                 ],
             },
         ],
-        max_tokens=256,
+        max_completion_tokens=256,
         temperature=0.1,
     )
 

@@ -4,13 +4,10 @@ from __future__ import annotations
 
 import argparse
 import io
-import json
 import os
 import shutil
 import subprocess
 import sys
-import urllib.request
-import urllib.error
 from pathlib import Path
 
 
@@ -46,6 +43,7 @@ PROVIDERS = {
         "name": "GitHub Models (Copilot)",
         "key_env": "GITHUB_TOKEN",
         "models": [
+            "openai/gpt-5-mini",
             "openai/gpt-4o",
             "openai/gpt-4o-mini",
             "openai/gpt-4.1",
@@ -53,10 +51,14 @@ PROVIDERS = {
             "openai/gpt-4.1-nano",
             "openai/o4-mini",
             "openai/o3",
-            "meta-llama/llama-4-scout-17b-16e-instruct",
             "deepseek/deepseek-r1",
-            "mistral-ai/mistral-large-2411",
+            "deepseek/DeepSeek-V3-0324",
             "xai/grok-3",
+            "xai/grok-3-mini",
+            "cohere/cohere-command-a",
+            "mistral-ai/mistral-small-2503",
+            "microsoft/Phi-4-multimodal-instruct",
+            "microsoft/phi-4",
         ],
     },
 }
@@ -254,79 +256,12 @@ def _select_provider(config):
     return config
 
 
-def _fetch_github_models(token: str) -> list[str]:
-    """Fetch available vision-capable models from GitHub.
-
-    Tries the GitHub Models inference endpoint first (authoritative for what
-    models actually work there), then falls back to the Copilot catalog API
-    filtered to models with a publisher prefix (e.g. ``openai/gpt-4o``).
-
-    Returns a list of model IDs, or an empty list on failure.
-    """
-    # Endpoints to try, in priority order
-    endpoints = [
-        "https://models.github.ai/inference/models",
-        "https://api.githubcopilot.com/models",
-    ]
-
-    for url in endpoints:
-        req = urllib.request.Request(url, headers={
-            "Authorization": f"Bearer {token}",
-            "Accept": "application/json",
-        })
-        try:
-            resp = urllib.request.urlopen(req, timeout=10)
-            data = json.loads(resp.read())
-        except Exception:
-            continue
-
-        models = []
-        seen = set()
-        for m in data.get("data", []):
-            mid = m.get("id", "")
-            if not mid or mid in seen:
-                continue
-            seen.add(mid)
-
-            # Only include chat models with vision support
-            caps = m.get("capabilities", {})
-            limits = caps.get("limits", {})
-            has_vision = limits.get("vision") is not None
-            if not has_vision:
-                continue
-
-            # When using the Copilot catalog, only keep models with a
-            # publisher prefix (e.g. "openai/gpt-4o") since those are the
-            # format that works with models.github.ai/inference.  Models
-            # without a prefix (e.g. "gpt-5.4") exist only in the Copilot
-            # ecosystem and return 404 on the inference endpoint.
-            if "copilot" in url and "/" not in mid:
-                continue
-
-            models.append(mid)
-
-        if models:
-            return sorted(models)
-
-    return []
-
-
 def _select_model(config):
     """Prompt user to select an LLM model. Returns updated config."""
     info = PROVIDERS.get(config.provider, PROVIDERS["openai"])
     provider_name = info["name"]
 
-    # Try fetching models dynamically for GitHub provider
-    models = []
-    if config.provider == "github" and config.github_token:
-        print(f"\nFetching available models from GitHub...")
-        models = _fetch_github_models(config.github_token)
-        if models:
-            print(f"Found {len(models)} vision-capable model(s).")
-
-    # Fall back to static list
-    if not models:
-        models = info["models"]
+    models = info["models"]
 
     print(f"\nSelect model for {provider_name}:\n")
     for i, model in enumerate(models, 1):
