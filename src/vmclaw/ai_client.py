@@ -50,14 +50,23 @@ Rules:
 GITHUB_INFERENCE_URL = "https://models.github.ai/inference"
 GITHUB_COPILOT_URL = "https://api.githubcopilot.com"
 
+# Models that only support the OpenAI Responses API (not Chat Completions).
+# These are served exclusively via the Copilot API.
+_RESPONSES_ONLY_MODELS = {"gpt-5.4", "gpt-5.2-codex", "gpt-5.3-codex"}
+
+
+def _uses_responses_api(model: str) -> bool:
+    """Return True if the model requires the Responses API."""
+    return model in _RESPONSES_ONLY_MODELS
+
 
 def _github_base_url(model: str) -> str:
     """Pick the right GitHub API endpoint for a model.
 
-    Claude models are only available via the Copilot API, while OpenAI and
-    other models use the GitHub Models inference endpoint.
+    Claude models and Responses-only models use the Copilot API, while
+    OpenAI and other models use the GitHub Models inference endpoint.
     """
-    if model.startswith("claude-"):
+    if model.startswith("claude-") or _uses_responses_api(model):
         return GITHUB_COPILOT_URL
     return GITHUB_INFERENCE_URL
 
@@ -104,6 +113,31 @@ def _image_to_base64(img: Image.Image, fmt: str = "PNG") -> str:
     return f"data:{mime};base64,{b64}"
 
 
+def _parse_raw_response(raw: str) -> Action:
+    """Parse raw AI text response into an Action."""
+    # Try to extract JSON from the response (handle markdown code blocks)
+    if raw.startswith("```"):
+        lines = raw.split("\n")
+        json_lines = []
+        in_block = False
+        for line in lines:
+            if line.startswith("```") and not in_block:
+                in_block = True
+                continue
+            elif line.startswith("```") and in_block:
+                break
+            elif in_block:
+                json_lines.append(line)
+        raw = "\n".join(json_lines)
+
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Failed to parse AI response as JSON: {raw!r}") from e
+
+    return Action.from_dict(data)
+
+
 def ask_ai(
     screenshot: Image.Image,
     task: str,
@@ -139,8 +173,20 @@ def ask_ai(
 
     image_url = _image_to_base64(screenshot)
 
+    if _uses_responses_api(config.model):
+        raw = _ask_via_responses(client, config.model, user_text, image_url)
+    else:
+        raw = _ask_via_chat(client, config.model, user_text, image_url)
+
+    return _parse_raw_response(raw)
+
+
+def _ask_via_chat(
+    client: OpenAI, model: str, user_text: str, image_url: str
+) -> str:
+    """Call the Chat Completions API and return the raw text response."""
     response = client.chat.completions.create(
-        model=config.model,
+        model=model,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {
@@ -157,28 +203,26 @@ def ask_ai(
         max_completion_tokens=256,
         temperature=0.1,
     )
+    return response.choices[0].message.content.strip()
 
-    raw = response.choices[0].message.content.strip()
 
-    # Try to extract JSON from the response (handle markdown code blocks)
-    if raw.startswith("```"):
-        # Strip ```json ... ``` wrapper
-        lines = raw.split("\n")
-        json_lines = []
-        in_block = False
-        for line in lines:
-            if line.startswith("```") and not in_block:
-                in_block = True
-                continue
-            elif line.startswith("```") and in_block:
-                break
-            elif in_block:
-                json_lines.append(line)
-        raw = "\n".join(json_lines)
-
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError as e:
-        raise ValueError(f"Failed to parse AI response as JSON: {raw!r}") from e
-
-    return Action.from_dict(data)
+def _ask_via_responses(
+    client: OpenAI, model: str, user_text: str, image_url: str
+) -> str:
+    """Call the Responses API and return the raw text response."""
+    response = client.responses.create(
+        model=model,
+        instructions=SYSTEM_PROMPT,
+        input=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": user_text},
+                    {"type": "input_image", "image_url": image_url},
+                ],
+            },
+        ],
+        max_output_tokens=256,
+        temperature=0.1,
+    )
+    return response.output_text.strip()

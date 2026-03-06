@@ -45,6 +45,7 @@ PROVIDERS = {
         "models": [
             "claude-opus-4.6",
             "claude-sonnet-4.6",
+            "gpt-5.4",
             "openai/gpt-5-mini",
             "openai/gpt-4o",
             "openai/gpt-4o-mini",
