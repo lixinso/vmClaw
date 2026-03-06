@@ -1,4 +1,4 @@
-# vmClaw
+# vmClaw 🦀
 
 **AI agent that sees and operates your virtual machines — free with GitHub Copilot.**
 
