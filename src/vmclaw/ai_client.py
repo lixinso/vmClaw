@@ -132,8 +132,13 @@ def _parse_raw_response(raw: str) -> Action:
 
     try:
         data = json.loads(raw)
-    except json.JSONDecodeError as e:
-        raise ValueError(f"Failed to parse AI response as JSON: {raw!r}") from e
+    except json.JSONDecodeError:
+        # Some models (e.g. gpt-5.4) occasionally return the JSON object twice
+        # concatenated. raw_decode() parses only the first valid object.
+        try:
+            data, _ = json.JSONDecoder().raw_decode(raw.strip())
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Failed to parse AI response as JSON: {raw!r}") from e
 
     return Action.from_dict(data)
 
