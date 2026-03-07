@@ -84,6 +84,10 @@ action_delay = 1.0     # Seconds between actions
 screenshot_width = 1024
 ```
 
+## How to Contribute
+
+- Run VS Code with Administrator
+
 ## License
 
 MIT
