@@ -22,10 +22,10 @@ vmClaw captures your VM screen, sends it to an AI vision model, and executes the
 
 ```bash
 # Install
-pip install -e .
+.\.venv\Scripts\pip.exe install -e .
 
 # Run as Administrator (required to inject input into VM windows)
-python -m vmclaw run
+.\.venv\Scripts\python.exe -m vmclaw run
 ```
 
 That's it. vmClaw will walk you through selecting a provider, model, and VM window interactively.
