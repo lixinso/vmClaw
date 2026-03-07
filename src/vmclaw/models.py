@@ -28,10 +28,12 @@ class Action:
 
     @classmethod
     def from_dict(cls, data: dict) -> Action:
+        raw_x = data.get("x")
+        raw_y = data.get("y")
         return cls(
             action=ActionType(data["action"]),
-            x=data.get("x"),
-            y=data.get("y"),
+            x=int(raw_x) if raw_x is not None else None,
+            y=int(raw_y) if raw_y is not None else None,
             text=data.get("text"),
             key=data.get("key"),
             direction=data.get("direction"),
