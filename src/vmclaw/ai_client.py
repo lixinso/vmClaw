@@ -44,6 +44,12 @@ Rules:
 - Only return ONE action per response.
 - If you cannot determine what to do, use "wait" to re-examine after a pause.
 - Use "done" only when the task is clearly finished.
+- IMPORTANT: Look at your previous actions. If you already clicked on a text field or \
+address bar, do NOT click it again. Instead, use "type" to enter text, or "key" \
+(e.g., ctrl+a) to select existing text first. Never repeat the same click more than twice.
+- To navigate to a URL in a browser: click the address bar ONCE, then use key("ctrl+a") \
+to select all, then use type("https://...") to enter the URL, then use key("Return") \
+to navigate.
 """
 
 

@@ -27,6 +27,47 @@ def _emit(
         print(data)
 
 
+def _check_repeated_actions(history: list[Action], threshold: int = 5) -> str:
+    """Detect if the last N actions are repetitive and return a hint if so.
+
+    Checks if the last `threshold` actions are the same type (e.g., all clicks
+    on similar coordinates). Returns a warning string to inject into the prompt,
+    or empty string if no repetition detected.
+    """
+    if len(history) < threshold:
+        return ""
+
+    recent = history[-threshold:]
+
+    # Check if all recent actions have the same type
+    action_types = {a.action for a in recent}
+    if len(action_types) != 1:
+        return ""
+
+    action_type = recent[0].action
+
+    if action_type == ActionType.CLICK:
+        return (
+            "\nWARNING: You have clicked the same area multiple times in a row "
+            "without progress. The click is working but you need to take a "
+            "DIFFERENT action now. If you clicked a text field or address bar, "
+            "use key(\"ctrl+a\") to select all text, then type(\"...\") to enter "
+            "new text, then key(\"Return\") to confirm. Do NOT click again.\n"
+        )
+    elif action_type == ActionType.KEY:
+        return (
+            "\nWARNING: You have pressed the same key multiple times without "
+            "progress. Try a different approach to complete the task.\n"
+        )
+    elif action_type == ActionType.TYPE:
+        return (
+            "\nWARNING: You have typed text multiple times without progress. "
+            "Check if the text field is focused and try clicking it first.\n"
+        )
+
+    return ""
+
+
 def run_task(
     vm: VMWindow,
     task: str,
@@ -50,7 +91,7 @@ def run_task(
     """
     history: list[Action] = []
     consecutive_waits = 0
-    max_consecutive_waits = 5
+    max_consecutive_waits = 15
     outcome = "max_actions"
 
     # Search memory for similar past tasks
@@ -94,9 +135,13 @@ def run_task(
 
         # 2. Ask AI for next action
         _emit(on_event, "log", f"[Step {step}] Analyzing screen...")
+        stuck_hint = _check_repeated_actions(history)
+        if stuck_hint:
+            _emit(on_event, "log", f"[Step {step}] Detected repeated actions, adding hint.")
+        effective_context = memory_context + stuck_hint
         try:
             action = ask_ai(
-                img, task, history, config, memory_context=memory_context,
+                img, task, history, config, memory_context=effective_context,
             )
         except Exception as e:
             _emit(on_event, "log", f"[Step {step}] AI error: {e}")
@@ -104,7 +149,7 @@ def run_task(
             time.sleep(1.0)
             try:
                 action = ask_ai(
-                    img, task, history, config, memory_context=memory_context,
+                    img, task, history, config, memory_context=effective_context,
                 )
             except Exception as e2:
                 _emit(on_event, "log", f"[Step {step}] AI error on retry: {e2}. Aborting.")
@@ -134,6 +179,17 @@ def run_task(
                 )
                 outcome = "interrupted"
                 break
+            # Progressive delay: wait longer as consecutive waits increase
+            # 1st-3rd wait: normal delay, 4th-6th: 2x, 7th+: 3x
+            if consecutive_waits >= 7:
+                extra = config.action_delay * 2
+            elif consecutive_waits >= 4:
+                extra = config.action_delay
+            else:
+                extra = 0
+            if extra > 0:
+                _emit(on_event, "log", f"[Step {step}] Waiting longer ({config.action_delay + extra:.1f}s)...")
+                time.sleep(extra)
         else:
             consecutive_waits = 0
 
