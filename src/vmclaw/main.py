@@ -401,29 +401,49 @@ def cmd_run(args: argparse.Namespace) -> None:
 
     print(f"\nSelected: {vm.title}")
 
+    # Initialize memory
+    memory = None
+    if config.memory_enabled:
+        try:
+            from .memory import MemoryStore
+
+            memory = MemoryStore()
+            memory.open(config)
+            print("Memory: enabled")
+        except Exception as e:
+            print(f"Memory: disabled ({e})")
+            memory = None
+
     # Single-task mode if --task is provided
     if args.task:
         try:
-            run_task(vm, args.task, config)
+            run_task(vm, args.task, config, memory=memory)
         except KeyboardInterrupt:
             print("\n\nTask interrupted by user.")
+        finally:
+            if memory:
+                memory.close()
         return
 
     # Interactive task loop
-    while True:
-        print()
-        task = input("Enter task (or 'quit'): ").strip()
-        if task.lower() in ("quit", "q", "exit"):
-            break
-        if not task:
-            continue
+    try:
+        while True:
+            print()
+            task = input("Enter task (or 'quit'): ").strip()
+            if task.lower() in ("quit", "q", "exit"):
+                break
+            if not task:
+                continue
 
-        try:
-            run_task(vm, task, config)
-        except KeyboardInterrupt:
-            print("\n\nTask interrupted by user.")
-        except Exception as e:
-            print(f"\nError: {e}")
+            try:
+                run_task(vm, task, config, memory=memory)
+            except KeyboardInterrupt:
+                print("\n\nTask interrupted by user.")
+            except Exception as e:
+                print(f"\nError: {e}")
+    finally:
+        if memory:
+            memory.close()
 
     print("Goodbye.")
 

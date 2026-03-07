@@ -14,6 +14,7 @@ dependencies = [
     "pywin32>=306",
     "Pillow>=10.0",
     "rich>=13.0",
+    "sqlite-vec>=0.1.6",
 ]
 
 [project.scripts]

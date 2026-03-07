@@ -162,6 +162,7 @@ def ask_ai(
     task: str,
     history: list[Action],
     config: Config,
+    memory_context: str = "",
 ) -> Action:
     """Send a screenshot and task to the AI model and get the next action.
 
@@ -170,6 +171,7 @@ def ask_ai(
         task: User's task description.
         history: List of previous actions taken.
         config: Configuration with API key and model.
+        memory_context: Optional text block of similar past tasks for few-shot context.
 
     Returns:
         The next Action to execute.
@@ -190,7 +192,9 @@ def ask_ai(
 
     w, h = screenshot.size
     user_text = (
-        f"Task: {task}\n{history_text}"
+        f"Task: {task}\n"
+        f"{memory_context}"
+        f"{history_text}"
         f"\nThe screenshot is {w}x{h} pixels. "
         f"Click coordinates must be within 0..{w-1} for x and 0..{h-1} for y."
         "\nWhat is the next action?"

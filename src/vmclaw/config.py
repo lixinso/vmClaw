@@ -59,6 +59,8 @@ def load_config(path: Path | None = None) -> Config:
             config.action_delay = float(agent["action_delay"])
         if agent.get("screenshot_width"):
             config.screenshot_width = int(agent["screenshot_width"])
+        if agent.get("memory_enabled") is not None:
+            config.memory_enabled = bool(agent["memory_enabled"])
         if vm.get("window_keywords"):
             config.window_keywords = vm["window_keywords"]
 
@@ -78,6 +80,10 @@ def load_config(path: Path | None = None) -> Config:
     env_model = os.environ.get("VMCLAW_MODEL")
     if env_model:
         config.model = env_model
+
+    env_memory = os.environ.get("VMCLAW_MEMORY")
+    if env_memory is not None:
+        config.memory_enabled = env_memory.lower() not in ("0", "false", "no", "off")
 
     # Auto-detect provider if not explicitly set and only one key is available
     if config.provider == "openai" and not config.openai_api_key and config.github_token:

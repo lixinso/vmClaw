@@ -40,6 +40,21 @@ class Action:
             reason=data.get("reason", ""),
         )
 
+    def to_dict(self) -> dict:
+        """Convert to a JSON-serializable dictionary."""
+        d: dict = {"action": self.action.value, "reason": self.reason}
+        if self.x is not None:
+            d["x"] = self.x
+        if self.y is not None:
+            d["y"] = self.y
+        if self.text is not None:
+            d["text"] = self.text
+        if self.key is not None:
+            d["key"] = self.key
+        if self.direction is not None:
+            d["direction"] = self.direction
+        return d
+
 
 @dataclass
 class VMWindow:
@@ -61,6 +76,7 @@ class Config:
     max_actions: int = 50
     action_delay: float = 1.0
     screenshot_width: int = 1024
+    memory_enabled: bool = True
     window_keywords: list[str] = field(
         default_factory=lambda: [
             "vmconnect", "vmware", "virtualbox", "qemu", "hyper-v",
