@@ -144,15 +144,20 @@ def _parse_raw_response(raw: str) -> Action:
     except json.JSONDecodeError:
         pass
 
-    # Find the first '{' and try raw_decode from there.  This handles
-    # reasoning text before the JSON (Claude) and duplicate JSON (gpt-5.4).
-    brace = raw.find("{")
-    if brace != -1:
+    # Walk through every '{' and try raw_decode from there.  This handles
+    # reasoning text before the JSON (Claude), duplicate JSON (gpt-5.4),
+    # and malformed first JSON followed by a self-corrected second one.
+    decoder = json.JSONDecoder()
+    pos = 0
+    while True:
+        brace = raw.find("{", pos)
+        if brace == -1:
+            break
         try:
-            data, _ = json.JSONDecoder().raw_decode(raw, brace)
+            data, end = decoder.raw_decode(raw, brace)
             return Action.from_dict(data)
-        except json.JSONDecodeError:
-            pass
+        except (json.JSONDecodeError, ValueError):
+            pos = brace + 1
 
     raise ValueError(f"Failed to parse AI response as JSON: {raw!r}")
 
