@@ -19,7 +19,7 @@ from .models import Action, ActionType, Config, VMWindow
 from .orchestrator import run_task
 
 # Import PROVIDERS from main (provider/model registry)
-from .main import PROVIDERS
+from .main import PROVIDERS, _gh_get_existing_token
 
 
 class VmClawGui:
@@ -254,6 +254,13 @@ class VmClawGui:
         config.max_actions = self.max_actions_var.get()
         config.action_delay = self.delay_var.get()
         config.memory_enabled = self.memory_var.get()
+
+        # Auto-fetch GitHub token from gh CLI if not already set
+        if config.provider == "github" and not config.github_token:
+            token = _gh_get_existing_token()
+            if token:
+                config.github_token = token
+
         return config
 
     def _on_task_enter(self, event: Any) -> str:
