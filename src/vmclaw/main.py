@@ -448,6 +448,13 @@ def cmd_run(args: argparse.Namespace) -> None:
     print("Goodbye.")
 
 
+def cmd_gui(args: argparse.Namespace) -> None:
+    """Launch the tkinter GUI."""
+    from .gui import launch_gui
+
+    launch_gui()
+
+
 def main() -> None:
     _fix_stdout_encoding()
 
@@ -474,6 +481,10 @@ def main() -> None:
     sub_run = subparsers.add_parser("run", help="Run the agent loop on a VM")
     sub_run.add_argument("-t", "--task", help="Task to execute (skips interactive prompt)")
     sub_run.set_defaults(func=cmd_run)
+
+    # gui
+    sub_gui = subparsers.add_parser("gui", help="Launch the graphical interface")
+    sub_gui.set_defaults(func=cmd_gui)
 
     args = parser.parse_args()
 

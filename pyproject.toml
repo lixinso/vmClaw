@@ -19,6 +19,7 @@ dependencies = [
 
 [project.scripts]
 vmclaw = "vmclaw.main:main"
+vmclaw-gui = "vmclaw.gui:launch_gui"
 
 [tool.setuptools.packages.find]
 where = ["src"]
