@@ -13,6 +13,9 @@ config.toml
 screenshots/
 *.png
 
+# Allow resource images
+!res/*.png
+
 # Virtual environments
 .venv/
 venv/
