@@ -29,6 +29,9 @@ vmClaw captures your VM screen, sends it to an AI vision model, and executes the
 
 # Run as Administrator (required to inject input into VM windows)
 .\.venv\Scripts\python.exe -m vmclaw run
+
+# Or launch the GUI
+.\.venv\Scripts\python.exe -m vmclaw gui
 ```
 
 That's it. vmClaw will walk you through selecting a provider, model, and VM window interactively.
@@ -60,7 +63,8 @@ That's it. vmClaw will walk you through selecting a provider, model, and VM wind
 ## Commands
 
 ```bash
-python -m vmclaw run         # Start the AI agent loop
+python -m vmclaw run         # Start the AI agent loop (CLI)
+python -m vmclaw gui         # Launch the graphical interface
 python -m vmclaw list        # List detected VM windows
 python -m vmclaw list-all    # List all windows (for debugging)
 python -m vmclaw capture     # Capture a VM screenshot
