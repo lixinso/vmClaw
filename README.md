@@ -8,6 +8,8 @@
 
 vmClaw captures your VM screen, sends it to an AI vision model, and executes the actions it decides on — clicks, typing, keyboard shortcuts, scrolling — in a continuous loop until the task is done.
 
+> Imagine running a company staffed by AI employees. Each one has a unique identity and works inside its own VM, giving every agent a clean, isolated workspace that never touches your host system. From your host machine, you act as the boss—assigning tasks, supervising their work, and interacting with each employee separately—while keeping your personal identity and environment fully isolated from the identities of your AI workforce.
+
 <!-- TODO: Replace with actual demo GIF -->
 <!-- ![vmClaw demo](docs/demo.gif) -->
 
