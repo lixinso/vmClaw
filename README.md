@@ -16,6 +16,7 @@ vmClaw captures your VM screen, sends it to an AI vision model, and executes the
 - **Multi-model** — GPT-5.4, Claude Opus 4.6, GPT-4o, DeepSeek, Grok, and 15+ more models.
 - **Local** — Runs on your Windows machine. Screenshots never leave your network (sent directly to the AI API).
 - **Universal** — Supports Hyper-V, VMware, VirtualBox, and QEMU VMs.
+- **AI Memory** — Stores past task executions in a local vector database and recalls similar successes as few-shot examples, so it improves with every run. All memory stays on your machine — nothing is shared or uploaded.
 - **Simple** — One command to start. No complex setup.
 
 ## Quick Start
