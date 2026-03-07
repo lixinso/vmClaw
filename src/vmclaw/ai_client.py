@@ -114,33 +114,47 @@ def _image_to_base64(img: Image.Image, fmt: str = "PNG") -> str:
 
 
 def _parse_raw_response(raw: str) -> Action:
-    """Parse raw AI text response into an Action."""
-    # Try to extract JSON from the response (handle markdown code blocks)
-    if raw.startswith("```"):
+    """Parse raw AI text response into an Action.
+
+    Handles several common model quirks:
+    - Markdown code blocks (```json ... ```)
+    - Text/reasoning before the JSON object (Claude models)
+    - Duplicate concatenated JSON objects (gpt-5.4)
+    """
+    # Strip markdown code blocks
+    if "```" in raw:
         lines = raw.split("\n")
-        json_lines = []
+        json_lines: list[str] = []
         in_block = False
         for line in lines:
-            if line.startswith("```") and not in_block:
+            if line.strip().startswith("```") and not in_block:
                 in_block = True
                 continue
-            elif line.startswith("```") and in_block:
+            elif line.strip().startswith("```") and in_block:
                 break
             elif in_block:
                 json_lines.append(line)
-        raw = "\n".join(json_lines)
+        if json_lines:
+            raw = "\n".join(json_lines)
 
+    # Try direct parse first
     try:
         data = json.loads(raw)
+        return Action.from_dict(data)
     except json.JSONDecodeError:
-        # Some models (e.g. gpt-5.4) occasionally return the JSON object twice
-        # concatenated. raw_decode() parses only the first valid object.
-        try:
-            data, _ = json.JSONDecoder().raw_decode(raw.strip())
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Failed to parse AI response as JSON: {raw!r}") from e
+        pass
 
-    return Action.from_dict(data)
+    # Find the first '{' and try raw_decode from there.  This handles
+    # reasoning text before the JSON (Claude) and duplicate JSON (gpt-5.4).
+    brace = raw.find("{")
+    if brace != -1:
+        try:
+            data, _ = json.JSONDecoder().raw_decode(raw, brace)
+            return Action.from_dict(data)
+        except json.JSONDecodeError:
+            pass
+
+    raise ValueError(f"Failed to parse AI response as JSON: {raw!r}")
 
 
 def ask_ai(
@@ -174,7 +188,13 @@ def ask_ai(
             history_lines.append(f"  Step {i}: {a.action.value} - {a.reason}")
         history_text = "\nActions taken so far:\n" + "\n".join(history_lines) + "\n"
 
-    user_text = f"Task: {task}\n{history_text}\nWhat is the next action?"
+    w, h = screenshot.size
+    user_text = (
+        f"Task: {task}\n{history_text}"
+        f"\nThe screenshot is {w}x{h} pixels. "
+        f"Click coordinates must be within 0..{w-1} for x and 0..{h-1} for y."
+        "\nWhat is the next action?"
+    )
 
     image_url = _image_to_base64(screenshot)
 

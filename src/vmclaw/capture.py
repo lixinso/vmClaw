@@ -233,11 +233,12 @@ def capture_and_resize(
             return None
         time.sleep(0.5)  # Extra wait for VM content to render
 
-    # Try region capture first (works better for VM windows using RDP rendering),
-    # then fall back to PrintWindow.
-    img = capture_window_region(hwnd)
+    # Use PrintWindow first — it works even when the window is behind other
+    # windows, so vmclaw doesn't need to steal foreground focus.  Fall back
+    # to mss region capture if PrintWindow fails.
+    img = capture_window(hwnd)
     if img is None:
-        img = capture_window(hwnd)
+        img = capture_window_region(hwnd)
     if img is None:
         return None
 
