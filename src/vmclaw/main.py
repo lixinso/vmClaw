@@ -343,8 +343,41 @@ def cmd_capture(args: argparse.Namespace) -> None:
     print(f"Screenshot saved: {output} ({img.size[0]}x{img.size[1]})")
 
 
+def _is_admin() -> bool:
+    """Return True if the current process has administrator privileges."""
+    import ctypes
+    try:
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except Exception:
+        return False
+
+
+def _restart_as_admin() -> None:
+    """Re-launch the current process with administrator privileges via UAC."""
+    import ctypes
+    # sys.argv[0] is the __main__.py path; pass it + remaining args to python.exe
+    params = subprocess.list2cmdline(sys.argv)
+    ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, params, None, 1)
+    sys.exit(0)
+
+
 def cmd_run(args: argparse.Namespace) -> None:
     """Run the agent loop on a selected VM window."""
+    import ctypes
+
+    # Hyper-V vmconnect (and similar VM viewers) run elevated. UIPI blocks mouse/
+    # keyboard injection from a normal process into an elevated window. We must
+    # also run elevated for PostMessage / SendInput to reach the VM guest.
+    if not _is_admin():
+        print(
+            "vmClaw requires Administrator privileges to inject mouse and keyboard\n"
+            "input into Hyper-V VM Connection windows (UIPI restriction).\n"
+        )
+        ans = input("Restart as Administrator now? [Y/n]: ").strip().lower()
+        if ans in ("", "y", "yes"):
+            _restart_as_admin()
+        print("Continuing without admin — clicks may not reach the VM.\n")
+
     config = load_config()
 
     print("vmClaw - VM Computer Use Agent\n")

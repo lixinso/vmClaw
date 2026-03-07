@@ -24,7 +24,7 @@ vmClaw captures your VM screen, sends it to an AI vision model, and executes the
 # Install
 pip install -e .
 
-# Run (uses GitHub Copilot — free, authenticates via browser)
+# Run as Administrator (required to inject input into VM windows)
 python -m vmclaw run
 ```
 
