@@ -389,6 +389,8 @@ class VmClawGui:
         self.model_combo["values"] = models
         if self.config.model in models:
             self.model_var.set(self.config.model)
+        elif "claude-opus-4.6" in models:
+            self.model_var.set("claude-opus-4.6")
         elif models:
             self.model_var.set(models[0])
 

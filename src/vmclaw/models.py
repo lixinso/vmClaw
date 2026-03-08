@@ -81,7 +81,7 @@ class Config:
     openai_api_key: str = ""
     github_token: str = ""
     api_base_url: str = ""  # Optional override for any provider
-    model: str = "openai/gpt-4o"
+    model: str = "claude-opus-4.6"
     max_actions: int = 50
     action_delay: float = 1.0
     screenshot_width: int = 1024
