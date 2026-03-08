@@ -747,8 +747,12 @@ class VmClawGui:
             self.event_queue.put(("_finished", None))
 
     def _fleet_task_worker(self, target: dict, task_req: Any) -> None:
-        """Send a task to a remote fleet node and poll for status."""
+        """Send a task to a remote fleet node and stream real-time events."""
+        import asyncio as _aio
+        import base64
+        import json
         import time
+        from io import BytesIO
         from .fleet import FleetClient
 
         peer = target["peer"]
@@ -769,40 +773,87 @@ class VmClawGui:
 
             task_id = result.get("task_id", "?")
             self.event_queue.put(("log", f"Fleet: task submitted (id={task_id})"))
-            self.event_queue.put(("log", "Fleet: polling for status..."))
+            self.event_queue.put(("log", "Fleet: streaming events..."))
 
-            # Poll status until done
-            while True:
-                if self.stop_event.is_set():
-                    # Cancel remote task
-                    client.cancel_task(peer, task_id)
-                    self.event_queue.put(("log", "Fleet: task cancelled."))
-                    self.event_queue.put(("done", "stopped"))
-                    break
+            # Stream events via WebSocket
+            async def _stream():
+                try:
+                    async for event in client.stream_events(peer, task_id):
+                        if self.stop_event.is_set():
+                            client.cancel_task(peer, task_id)
+                            self.event_queue.put(("log", "Fleet: task cancelled."))
+                            self.event_queue.put(("done", "stopped"))
+                            return
 
-                time.sleep(2)
-                status = client.get_task_status(peer, task_id)
-                if status is None:
-                    self.event_queue.put(("log", "Fleet: lost connection to node."))
-                    self.event_queue.put(("done", "error"))
-                    break
+                        etype = event.get("type", "")
+                        data = event.get("data")
 
-                self.event_queue.put((
-                    "log",
-                    f"  [{status.status}] actions={status.actions_taken}"
-                    + (f" outcome={status.outcome}" if status.outcome else ""),
-                ))
-                self.event_queue.put(("step", status.actions_taken))
+                        if etype == "log":
+                            self.event_queue.put(("log", str(data) if data else ""))
+                        elif etype == "screenshot" and data:
+                            # Decode base64 PNG back to PIL Image
+                            try:
+                                img_bytes = base64.b64decode(data)
+                                img = Image.open(BytesIO(img_bytes))
+                                self.event_queue.put(("screenshot", img))
+                            except Exception:
+                                pass
+                        elif etype == "action" and data:
+                            try:
+                                action = Action.from_dict(data)
+                                self.event_queue.put(("action", action))
+                            except Exception:
+                                pass
+                        elif etype == "step":
+                            self.event_queue.put(("step", data))
+                        elif etype == "tokens":
+                            # tokens come as string from server, display as log
+                            self.event_queue.put(("log", f"  Tokens: {data}"))
+                        elif etype == "done":
+                            self.event_queue.put(("done", data or "done"))
+                            return
+                except Exception as e:
+                    self.event_queue.put(("log", f"Fleet: WebSocket error: {e}"))
+                    # Fall back to polling
+                    self.event_queue.put(("log", "Fleet: falling back to status polling..."))
+                    self._fleet_poll_status(client, peer, task_id)
+                    return
 
-                if status.status in ("done", "error", "stopped", "max_actions"):
-                    self.event_queue.put(("done", status.status))
-                    break
+            _aio.run(_stream())
 
         except Exception as e:
             self.event_queue.put(("log", f"Fleet error: {e}"))
             self.event_queue.put(("done", "error"))
         finally:
             self.event_queue.put(("_finished", None))
+
+    def _fleet_poll_status(self, client: Any, peer: Any, task_id: str) -> None:
+        """Fallback: poll task status via REST when WebSocket is unavailable."""
+        import time
+        while True:
+            if self.stop_event.is_set():
+                client.cancel_task(peer, task_id)
+                self.event_queue.put(("log", "Fleet: task cancelled."))
+                self.event_queue.put(("done", "stopped"))
+                break
+
+            time.sleep(2)
+            status = client.get_task_status(peer, task_id)
+            if status is None:
+                self.event_queue.put(("log", "Fleet: lost connection to node."))
+                self.event_queue.put(("done", "error"))
+                break
+
+            self.event_queue.put((
+                "log",
+                f"  [{status.status}] actions={status.actions_taken}"
+                + (f" outcome={status.outcome}" if status.outcome else ""),
+            ))
+            self.event_queue.put(("step", status.actions_taken))
+
+            if status.status in ("done", "error", "stopped", "max_actions"):
+                self.event_queue.put(("done", status.status))
+                break
 
     # ------------------------------------------------------------------
     # Queue polling — bridge agent thread events to tkinter main thread
