@@ -21,6 +21,55 @@ vmClaw captures your VM screen, sends it to an AI vision model, and executes the
 - **AI Memory** — Stores past task executions in a local vector database and recalls similar successes as few-shot examples, so it improves with every run. All memory stays on your machine — nothing is shared or uploaded.
 - **Simple** — One command to start. No complex setup.
 
+## Fleet Mode — Control All Your VMs From One Screen
+
+<p align="center">
+  <img src="res/icon-vmclaw-fleet.png" alt="vmClaw Fleet" width="160">
+</p>
+
+What if one AI agent isn't enough? **Fleet mode** lets you command VMs across every machine on your network from a single GUI.
+
+```
+  ┌──────────────────────────────────────────────────────┐
+  │              Your Machine (Hub)                       │
+  │   vmClaw GUI  ──────────────────────────────────────  │
+  │   ┌──────────────┐  ┌────────────┐  ┌────────────┐  │
+  │   │ VM: Alice     │  │ VM: Bob    │  │ VM: Carol  │  │
+  │   │ (local)       │  │ (local)    │  │ (local)    │  │
+  │   └──────────────┘  └────────────┘  └────────────┘  │
+  └──────────────┬───────────────────────────────────────┘
+                 │  WebSocket
+        ┌────────┴────────┐
+        │  Lab Server      │         ┌──────────────────┐
+        │  10.0.0.9        │─────────│  More machines   │
+        │  ┌────────────┐  │         │  ...             │
+        │  │ VM: Dev-01  │  │         └──────────────────┘
+        │  │ VM: Dev-02  │  │
+        │  │ VM: Dev-03  │  │
+        │  └────────────┘  │
+        └──────────────────┘
+```
+
+- **One click, any VM** — Browse VMs across all machines in a sidebar tree. Click one, assign a task, watch it execute in real-time.
+- **Live streaming** — Screenshots, logs, and actions from remote nodes stream back over WebSocket instantly. It feels like the VM is running locally.
+- **Zero config discovery** — Just add a peer's IP to `config.toml`. No VPN, no cloud, no port forwarding gymnastics. It works on your LAN out of the box.
+- **Scale your AI workforce** — Run 3 VMs on your desktop, 5 on a lab server, 10 in a rack. Assign tasks to any of them from one place. Each AI employee works independently inside its own VM.
+- **Proxy chains** — Node A discovers Node B's peers automatically, so `A -> B -> C` routing works without configuring every node.
+
+```toml
+# config.toml — that's all you need
+[fleet]
+enabled = true
+node_name = "my-pc"
+listen_port = 8077
+
+[[fleet.peers]]
+name = "lab-server"
+url = "http://192.168.1.50:8077"
+```
+
+Fleet turns vmClaw from a single-machine tool into a **distributed AI operations center**. Think Ansible, but instead of running shell commands, your agents *see the screen and use it like a human would*.
+
 ## Quick Start
 
 ```bash
