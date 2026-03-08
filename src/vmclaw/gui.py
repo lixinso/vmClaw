@@ -45,6 +45,7 @@ class VmClawGui:
         # Fleet state: when a remote VM is selected, this holds the target info
         # {node_name: str, vm_title: str, peer: PeerConfig} or None for local
         self._fleet_target: dict | None = None
+        self._fleet_visible: bool = True
 
         self._build_ui()
         self._populate_providers()
@@ -83,12 +84,28 @@ class VmClawGui:
         log_frame.pack_propagate(False)
         self._build_log_panel(log_frame)
 
+        # Fleet sidebar (collapsible, far left)
+        self._fleet_sidebar = ttk.LabelFrame(self.root, text="Fleet Nodes")
+        self._fleet_sidebar.pack(side=tk.LEFT, fill=tk.Y, padx=(5, 0), pady=5)
+        self._fleet_sidebar.configure(width=220)
+        self._fleet_sidebar.pack_propagate(False)
+        self._build_fleet_nav(self._fleet_sidebar)
+
+        # Thin opener strip (shown when sidebar is hidden)
+        self._fleet_opener = ttk.Frame(self.root, width=24)
+        self._fleet_open_btn = ttk.Button(
+            self._fleet_opener, text="\u25b6", width=2,
+            command=self._toggle_fleet_nav,
+        )
+        self._fleet_open_btn.pack(side=tk.TOP, pady=(8, 0))
+        # Not packed initially — only shown when sidebar is collapsed
+
         # Left config panel (fixed width)
-        left_frame = ttk.LabelFrame(self.root, text="Configuration")
-        left_frame.pack(side=tk.LEFT, fill=tk.Y, padx=5, pady=5)
-        left_frame.configure(width=280)
-        left_frame.pack_propagate(False)
-        self._build_left_panel(left_frame)
+        self._left_frame = ttk.LabelFrame(self.root, text="Configuration")
+        self._left_frame.pack(side=tk.LEFT, fill=tk.Y, padx=5, pady=5)
+        self._left_frame.configure(width=280)
+        self._left_frame.pack_propagate(False)
+        self._build_left_panel(self._left_frame)
 
         # Right screenshot panel (fills remaining space)
         right_frame = ttk.LabelFrame(self.root, text="Screenshot")
@@ -157,29 +174,7 @@ class VmClawGui:
             row=row, column=0, pady=4, sticky="ew",
         ); row += 1
 
-        # -- Fleet Nodes section --
-        ttk.Label(parent, text="Fleet Nodes:").grid(row=row, column=0, **pad); row += 1
-
-        tree_frame = ttk.Frame(parent)
-        tree_frame.grid(row=row, column=0, padx=10, pady=2, sticky="nsew"); row += 1
-        parent.rowconfigure(row - 1, weight=1)
-
-        self.fleet_tree = ttk.Treeview(tree_frame, height=5, selectmode="browse")
-        self.fleet_tree.heading("#0", text="Node / VM", anchor="w")
-        self.fleet_tree.column("#0", width=240)
-        tree_scroll = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=self.fleet_tree.yview)
-        self.fleet_tree.configure(yscrollcommand=tree_scroll.set)
-        self.fleet_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        tree_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        self.fleet_tree.bind("<<TreeviewSelect>>", self._on_fleet_select)
-
-        fleet_btn_frame = ttk.Frame(parent)
-        fleet_btn_frame.grid(row=row, column=0, padx=10, pady=2, sticky="ew"); row += 1
-        ttk.Button(
-            fleet_btn_frame, text="Refresh Fleet", command=self._refresh_fleet,
-        ).pack(side=tk.LEFT, padx=(0, 5))
-
-        # Target indicator
+        # Target indicator (always visible)
         self.target_var = tk.StringVar(value="Target: local")
         ttk.Label(
             parent, textvariable=self.target_var, foreground="#006699",
@@ -235,6 +230,52 @@ class VmClawGui:
             font=("Consolas", 9),
         )
         self.log_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+    def _build_fleet_nav(self, parent: ttk.LabelFrame) -> None:
+        """Build the fleet navigation sidebar content."""
+        # Close button at top-right
+        close_frame = ttk.Frame(parent)
+        close_frame.pack(fill=tk.X, padx=5, pady=(2, 0))
+        ttk.Button(
+            close_frame, text="\u2716", width=3,
+            command=self._toggle_fleet_nav,
+        ).pack(side=tk.RIGHT)
+
+        # Tree view for nodes and VMs
+        tree_frame = ttk.Frame(parent)
+        tree_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=(2, 2))
+
+        self.fleet_tree = ttk.Treeview(tree_frame, height=8, selectmode="browse")
+        self.fleet_tree.heading("#0", text="Node / VM", anchor="w")
+        self.fleet_tree.column("#0", width=190)
+        tree_scroll = ttk.Scrollbar(
+            tree_frame, orient=tk.VERTICAL, command=self.fleet_tree.yview,
+        )
+        self.fleet_tree.configure(yscrollcommand=tree_scroll.set)
+        self.fleet_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        tree_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        self.fleet_tree.bind("<<TreeviewSelect>>", self._on_fleet_select)
+
+        # Refresh button
+        ttk.Button(
+            parent, text="Refresh Fleet", command=self._refresh_fleet,
+        ).pack(padx=5, pady=(2, 5), fill=tk.X)
+
+    def _toggle_fleet_nav(self) -> None:
+        """Show or hide the fleet navigation sidebar."""
+        if self._fleet_visible:
+            self._fleet_sidebar.pack_forget()
+            self._fleet_opener.pack(
+                side=tk.LEFT, fill=tk.Y, padx=(2, 0), pady=5,
+                before=self._left_frame,
+            )
+        else:
+            self._fleet_opener.pack_forget()
+            self._fleet_sidebar.pack(
+                side=tk.LEFT, fill=tk.Y, padx=(5, 0), pady=5,
+                before=self._left_frame,
+            )
+        self._fleet_visible = not self._fleet_visible
 
     # ------------------------------------------------------------------
     # Provider / Model population
