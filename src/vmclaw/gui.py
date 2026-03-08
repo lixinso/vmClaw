@@ -42,6 +42,10 @@ class VmClawGui:
         self.is_running = False
         self._voice_recording = False
 
+        # Fleet state: when a remote VM is selected, this holds the target info
+        # {node_name: str, vm_title: str, peer: PeerConfig} or None for local
+        self._fleet_target: dict | None = None
+
         self._build_ui()
         self._populate_providers()
         self._refresh_vm_windows()
@@ -94,74 +98,109 @@ class VmClawGui:
     def _build_left_panel(self, parent: ttk.LabelFrame) -> None:
         pad = {"padx": 10, "pady": 3, "sticky": "ew"}
 
+        row = 0
+
         # Provider
-        ttk.Label(parent, text="Provider:").grid(row=0, column=0, **pad)
+        ttk.Label(parent, text="Provider:").grid(row=row, column=0, **pad); row += 1
         self.provider_var = tk.StringVar()
         self.provider_combo = ttk.Combobox(
             parent, textvariable=self.provider_var, state="readonly", width=28,
         )
-        self.provider_combo.grid(row=1, column=0, **pad)
+        self.provider_combo.grid(row=row, column=0, **pad); row += 1
         self.provider_combo.bind("<<ComboboxSelected>>", self._on_provider_changed)
 
         # Model
-        ttk.Label(parent, text="Model:").grid(row=2, column=0, **pad)
+        ttk.Label(parent, text="Model:").grid(row=row, column=0, **pad); row += 1
         self.model_var = tk.StringVar()
         self.model_combo = ttk.Combobox(
             parent, textvariable=self.model_var, width=28,
         )
-        self.model_combo.grid(row=3, column=0, **pad)
+        self.model_combo.grid(row=row, column=0, **pad); row += 1
 
-        # VM Window
-        ttk.Label(parent, text="VM Window:").grid(row=4, column=0, **pad)
+        # VM Window (local)
+        ttk.Label(parent, text="VM Window:").grid(row=row, column=0, **pad); row += 1
         self.vm_var = tk.StringVar()
         self.vm_combo = ttk.Combobox(
             parent, textvariable=self.vm_var, state="readonly", width=28,
         )
-        self.vm_combo.grid(row=5, column=0, **pad)
+        self.vm_combo.grid(row=row, column=0, **pad); row += 1
+        self.vm_combo.bind("<<ComboboxSelected>>", self._on_local_vm_selected)
         ttk.Button(
             parent, text="Refresh Windows", command=self._refresh_vm_windows,
-        ).grid(row=6, column=0, **pad)
+        ).grid(row=row, column=0, **pad); row += 1
 
         ttk.Separator(parent, orient=tk.HORIZONTAL).grid(
-            row=7, column=0, pady=8, sticky="ew",
-        )
+            row=row, column=0, pady=4, sticky="ew",
+        ); row += 1
 
-        # Max actions
-        ttk.Label(parent, text="Max actions:").grid(row=8, column=0, **pad)
+        # Max actions + delay + memory (compact row)
+        settings_frame = ttk.Frame(parent)
+        settings_frame.grid(row=row, column=0, padx=10, pady=2, sticky="ew"); row += 1
+        ttk.Label(settings_frame, text="Max:").pack(side=tk.LEFT)
         self.max_actions_var = tk.IntVar(value=self.config.max_actions)
         ttk.Spinbox(
-            parent, from_=1, to=200, textvariable=self.max_actions_var, width=10,
-        ).grid(row=9, column=0, **pad)
-
-        # Action delay
-        ttk.Label(parent, text="Action delay (sec):").grid(row=10, column=0, **pad)
+            settings_frame, from_=1, to=200, textvariable=self.max_actions_var, width=5,
+        ).pack(side=tk.LEFT, padx=(2, 8))
+        ttk.Label(settings_frame, text="Delay:").pack(side=tk.LEFT)
         self.delay_var = tk.DoubleVar(value=self.config.action_delay)
         ttk.Spinbox(
-            parent, from_=0.1, to=10.0, increment=0.1,
-            textvariable=self.delay_var, width=10,
-        ).grid(row=11, column=0, **pad)
+            settings_frame, from_=0.1, to=10.0, increment=0.1,
+            textvariable=self.delay_var, width=5,
+        ).pack(side=tk.LEFT, padx=2)
 
-        # Memory checkbox
         self.memory_var = tk.BooleanVar(value=self.config.memory_enabled)
         ttk.Checkbutton(
             parent, text="Enable AI Memory", variable=self.memory_var,
-        ).grid(row=12, column=0, **pad)
+        ).grid(row=row, column=0, **pad); row += 1
 
         ttk.Separator(parent, orient=tk.HORIZONTAL).grid(
-            row=13, column=0, pady=8, sticky="ew",
-        )
+            row=row, column=0, pady=4, sticky="ew",
+        ); row += 1
+
+        # -- Fleet Nodes section --
+        ttk.Label(parent, text="Fleet Nodes:").grid(row=row, column=0, **pad); row += 1
+
+        tree_frame = ttk.Frame(parent)
+        tree_frame.grid(row=row, column=0, padx=10, pady=2, sticky="nsew"); row += 1
+        parent.rowconfigure(row - 1, weight=1)
+
+        self.fleet_tree = ttk.Treeview(tree_frame, height=5, selectmode="browse")
+        self.fleet_tree.heading("#0", text="Node / VM", anchor="w")
+        self.fleet_tree.column("#0", width=240)
+        tree_scroll = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=self.fleet_tree.yview)
+        self.fleet_tree.configure(yscrollcommand=tree_scroll.set)
+        self.fleet_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        tree_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        self.fleet_tree.bind("<<TreeviewSelect>>", self._on_fleet_select)
+
+        fleet_btn_frame = ttk.Frame(parent)
+        fleet_btn_frame.grid(row=row, column=0, padx=10, pady=2, sticky="ew"); row += 1
+        ttk.Button(
+            fleet_btn_frame, text="Refresh Fleet", command=self._refresh_fleet,
+        ).pack(side=tk.LEFT, padx=(0, 5))
+
+        # Target indicator
+        self.target_var = tk.StringVar(value="Target: local")
+        ttk.Label(
+            parent, textvariable=self.target_var, foreground="#006699",
+            font=("Segoe UI", 8),
+        ).grid(row=row, column=0, **pad); row += 1
+
+        ttk.Separator(parent, orient=tk.HORIZONTAL).grid(
+            row=row, column=0, pady=4, sticky="ew",
+        ); row += 1
 
         # Task input
-        ttk.Label(parent, text="Task:").grid(row=14, column=0, **pad)
-        self.task_text = tk.Text(parent, height=4, width=30, wrap=tk.WORD)
-        self.task_text.grid(row=15, column=0, padx=10, pady=3, sticky="ew")
+        ttk.Label(parent, text="Task:").grid(row=row, column=0, **pad); row += 1
+        self.task_text = tk.Text(parent, height=3, width=30, wrap=tk.WORD)
+        self.task_text.grid(row=row, column=0, padx=10, pady=3, sticky="ew"); row += 1
 
         # Bind Enter key to start (Shift+Enter for newline)
         self.task_text.bind("<Return>", self._on_task_enter)
 
         # Start / Stop buttons
         btn_frame = ttk.Frame(parent)
-        btn_frame.grid(row=16, column=0, pady=10)
+        btn_frame.grid(row=row, column=0, pady=6); row += 1
         self.start_btn = ttk.Button(
             btn_frame, text="Start", command=self._on_start,
         )
@@ -179,7 +218,7 @@ class VmClawGui:
         self.status_var = tk.StringVar(value="Idle")
         ttk.Label(
             parent, textvariable=self.status_var, foreground="gray",
-        ).grid(row=17, column=0, **pad)
+        ).grid(row=row, column=0, **pad); row += 1
 
         parent.columnconfigure(0, weight=1)
 
@@ -246,6 +285,174 @@ class VmClawGui:
             self.vm_combo.current(0)
         self._append_log(f"Found {len(self.vm_windows)} window(s).")
 
+    def _on_local_vm_selected(self, _event: Any = None) -> None:
+        """When a local VM is selected in the combo, clear fleet target."""
+        self._fleet_target = None
+        self.target_var.set("Target: local")
+        # Deselect fleet tree
+        for sel in self.fleet_tree.selection():
+            self.fleet_tree.selection_remove(sel)
+
+    # ------------------------------------------------------------------
+    # Fleet discovery and selection
+    # ------------------------------------------------------------------
+
+    def _refresh_fleet(self) -> None:
+        """Discover fleet peers in a background thread."""
+        self._append_log("Fleet: discovering peers...")
+        thread = threading.Thread(target=self._fleet_discover_worker, daemon=True)
+        thread.start()
+
+    def _fleet_discover_worker(self) -> None:
+        """Background thread: query all fleet peers."""
+        try:
+            from .fleet import FleetClient
+            config = load_config()
+            fleet_cfg = config.fleet
+
+            if not fleet_cfg.peers:
+                self.event_queue.put(("_fleet_result", {"nodes": [], "msg": "No peers configured"}))
+                return
+
+            client = FleetClient(fleet_cfg)
+            nodes = []
+
+            # Add local node
+            local_vms = find_vm_windows(config.window_keywords)
+            nodes.append({
+                "name": fleet_cfg.node_name or "(local)",
+                "role": fleet_cfg.role,
+                "reachable": True,
+                "local": True,
+                "vms": [{"title": vm.title} for vm in local_vms],
+            })
+
+            # Query remote peers
+            for peer in fleet_cfg.peers:
+                info = client.get_info(peer)
+                vms = client.list_vms(peer) if info else []
+                nodes.append({
+                    "name": peer.name,
+                    "role": info.role if info else "?",
+                    "reachable": info is not None,
+                    "local": False,
+                    "vms": vms,
+                    "peer": peer,
+                })
+
+            self.event_queue.put(("_fleet_result", {"nodes": nodes, "msg": ""}))
+
+        except Exception as e:
+            self.event_queue.put(("_fleet_result", {"nodes": [], "msg": str(e)}))
+
+    def _populate_fleet_tree(self, data: dict) -> None:
+        """Populate the fleet tree view with discovered nodes."""
+        # Clear existing items
+        for item in self.fleet_tree.get_children():
+            self.fleet_tree.delete(item)
+
+        nodes = data.get("nodes", [])
+        msg = data.get("msg", "")
+
+        if msg and not nodes:
+            self._append_log(f"Fleet: {msg}")
+            return
+
+        for node in nodes:
+            name = node["name"]
+            role = node.get("role", "?")
+            is_local = node.get("local", False)
+            reachable = node.get("reachable", False)
+
+            if is_local:
+                tag = "local"
+                label = f"{name} (local, {role})"
+            elif reachable:
+                tag = "online"
+                label = f"{name} ({role})"
+            else:
+                tag = "offline"
+                label = f"{name} (OFFLINE)"
+
+            node_id = self.fleet_tree.insert("", tk.END, text=label, tags=(tag,))
+
+            # Store peer reference in the tree item
+            if not is_local and node.get("peer"):
+                # Store as item data via a mapping
+                if not hasattr(self, "_fleet_peer_map"):
+                    self._fleet_peer_map = {}
+                self._fleet_peer_map[node_id] = node["peer"]
+
+            # Add VM children
+            for vm in node.get("vms", []):
+                title = vm if isinstance(vm, str) else vm.get("title", "?")
+                vm_tag = "local_vm" if is_local else "remote_vm"
+                self.fleet_tree.insert(
+                    node_id, tk.END, text=f"VM: {title}",
+                    tags=(vm_tag,),
+                )
+
+            # Expand node by default
+            self.fleet_tree.item(node_id, open=True)
+
+        # Style tags
+        self.fleet_tree.tag_configure("offline", foreground="gray")
+        self.fleet_tree.tag_configure("online", foreground="#006600")
+        self.fleet_tree.tag_configure("local", foreground="#333333")
+
+        count = len(nodes)
+        online = sum(1 for n in nodes if n.get("reachable"))
+        self._append_log(f"Fleet: {count} node(s), {online} online.")
+
+    def _on_fleet_select(self, _event: Any = None) -> None:
+        """Handle selection in the fleet tree view."""
+        selection = self.fleet_tree.selection()
+        if not selection:
+            return
+
+        item = selection[0]
+        tags = self.fleet_tree.item(item, "tags")
+        text = self.fleet_tree.item(item, "text")
+
+        if "remote_vm" in tags:
+            # A remote VM was selected — set fleet target
+            parent_id = self.fleet_tree.parent(item)
+            peer_map = getattr(self, "_fleet_peer_map", {})
+            peer = peer_map.get(parent_id)
+            parent_text = self.fleet_tree.item(parent_id, "text")
+
+            # Extract node name from parent text (e.g., "machine-b (agent)")
+            node_name = parent_text.split(" (")[0] if " (" in parent_text else parent_text
+
+            # Extract VM title from "VM: Title"
+            vm_title = text[4:] if text.startswith("VM: ") else text
+
+            if peer:
+                self._fleet_target = {
+                    "node_name": node_name,
+                    "vm_title": vm_title,
+                    "peer": peer,
+                }
+                self.target_var.set(f"Target: {node_name} / {vm_title}")
+            else:
+                self._fleet_target = None
+                self.target_var.set("Target: local")
+
+        elif "local_vm" in tags:
+            # A local VM was selected — find it in the combo
+            vm_title = text[4:] if text.startswith("VM: ") else text
+            self._fleet_target = None
+            self.target_var.set("Target: local")
+            # Try to select it in the local VM combo
+            for i, w in enumerate(self.vm_windows):
+                if w.title == vm_title:
+                    self.vm_combo.current(i)
+                    break
+
+        else:
+            # A node header was selected — no action
+            pass
+
     # ------------------------------------------------------------------
     # Start / Stop
     # ------------------------------------------------------------------
@@ -281,13 +488,20 @@ class VmClawGui:
             messagebox.showwarning("No Task", "Please enter a task description.")
             return
 
+        config = self._build_config_from_ui()
+
+        # Check if this is a remote fleet task
+        if self._fleet_target is not None:
+            self._start_fleet_task(task, config)
+            return
+
+        # Local task — need a local VM selected
         idx = self.vm_combo.current()
         if idx < 0 or idx >= len(self.vm_windows):
             messagebox.showwarning("No VM", "Please select a VM window.")
             return
 
         vm = self.vm_windows[idx]
-        config = self._build_config_from_ui()
 
         # Validate credentials
         if config.provider == "openai" and not config.openai_api_key:
@@ -318,6 +532,37 @@ class VmClawGui:
         self.agent_thread = threading.Thread(
             target=self._agent_worker,
             args=(vm, task, config),
+            daemon=True,
+        )
+        self.agent_thread.start()
+
+    def _start_fleet_task(self, task: str, config: Config) -> None:
+        """Start a task on a remote fleet node."""
+        from .fleet_models import TaskRequest
+
+        target = self._fleet_target
+        if target is None:
+            return
+
+        # Clear log
+        self.log_text.configure(state=tk.NORMAL)
+        self.log_text.delete("1.0", tk.END)
+        self.log_text.configure(state=tk.DISABLED)
+
+        self.is_running = True
+        self._set_controls_enabled(False)
+        self.status_var.set(f"Sending to {target['node_name']}...")
+
+        task_req = TaskRequest(
+            vm_title=target["vm_title"],
+            task=task,
+            max_actions=self.max_actions_var.get(),
+            action_delay=self.delay_var.get(),
+        )
+
+        self.agent_thread = threading.Thread(
+            target=self._fleet_task_worker,
+            args=(target, task_req),
             daemon=True,
         )
         self.agent_thread.start()
@@ -377,6 +622,64 @@ class VmClawGui:
                 memory.close()
             self.event_queue.put(("_finished", None))
 
+    def _fleet_task_worker(self, target: dict, task_req: Any) -> None:
+        """Send a task to a remote fleet node and poll for status."""
+        import time
+        from .fleet import FleetClient
+
+        peer = target["peer"]
+        node_name = target["node_name"]
+
+        try:
+            client = FleetClient(self.config.fleet)
+            self.event_queue.put(("log", f"Fleet: sending task to [{node_name}]..."))
+            self.event_queue.put(("log", f"  VM: {task_req.vm_title}"))
+            self.event_queue.put(("log", f"  Task: {task_req.task}"))
+
+            result = client.submit_task(peer, task_req)
+            if result is None or "error" in result:
+                err = result.get("error", "unreachable") if result else "unreachable"
+                self.event_queue.put(("log", f"Fleet: task failed — {err}"))
+                self.event_queue.put(("done", "error"))
+                return
+
+            task_id = result.get("task_id", "?")
+            self.event_queue.put(("log", f"Fleet: task submitted (id={task_id})"))
+            self.event_queue.put(("log", "Fleet: polling for status..."))
+
+            # Poll status until done
+            while True:
+                if self.stop_event.is_set():
+                    # Cancel remote task
+                    client.cancel_task(peer, task_id)
+                    self.event_queue.put(("log", "Fleet: task cancelled."))
+                    self.event_queue.put(("done", "stopped"))
+                    break
+
+                time.sleep(2)
+                status = client.get_task_status(peer, task_id)
+                if status is None:
+                    self.event_queue.put(("log", "Fleet: lost connection to node."))
+                    self.event_queue.put(("done", "error"))
+                    break
+
+                self.event_queue.put((
+                    "log",
+                    f"  [{status.status}] actions={status.actions_taken}"
+                    + (f" outcome={status.outcome}" if status.outcome else ""),
+                ))
+                self.event_queue.put(("step", status.actions_taken))
+
+                if status.status in ("done", "error", "stopped", "max_actions"):
+                    self.event_queue.put(("done", status.status))
+                    break
+
+        except Exception as e:
+            self.event_queue.put(("log", f"Fleet error: {e}"))
+            self.event_queue.put(("done", "error"))
+        finally:
+            self.event_queue.put(("_finished", None))
+
     # ------------------------------------------------------------------
     # Queue polling — bridge agent thread events to tkinter main thread
     # ------------------------------------------------------------------
@@ -408,6 +711,8 @@ class VmClawGui:
             elif event_type == "_voice_done":
                 self._voice_recording = False
                 self.voice_btn.configure(text="Voice")
+            elif event_type == "_fleet_result":
+                self._populate_fleet_tree(data)
 
         self.root.after(100, self._poll_queue)
 

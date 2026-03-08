@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
+from .fleet_models import FleetConfig, PeerConfig
+
 
 class ActionType(Enum):
     CLICK = "click"
@@ -83,3 +85,4 @@ class Config:
             "virtual machine connection",
         ]
     )
+    fleet: FleetConfig = field(default_factory=FleetConfig)

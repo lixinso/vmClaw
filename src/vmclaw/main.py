@@ -455,6 +455,153 @@ def cmd_gui(args: argparse.Namespace) -> None:
     launch_gui()
 
 
+def cmd_serve(args: argparse.Namespace) -> None:
+    """Start the fleet agent server."""
+    from .server import start_server
+
+    config = load_config()
+
+    # CLI overrides for fleet settings
+    if args.port:
+        config.fleet.listen_port = args.port
+    if args.name:
+        config.fleet.node_name = args.name
+    if args.token:
+        config.fleet.auth_token = args.token
+
+    # Ensure fleet is marked enabled when serving
+    config.fleet.enabled = True
+
+    # Auto-detect provider token if needed
+    if config.provider == "github" and not config.github_token:
+        token = _gh_get_existing_token()
+        if token:
+            config.github_token = token
+
+    start_server(config, host=args.host, port=args.port)
+
+
+def cmd_fleet_list(args: argparse.Namespace) -> None:
+    """List all fleet nodes and their VMs."""
+    from .fleet import FleetClient
+
+    config = load_config()
+
+    if not config.fleet.peers:
+        print("No fleet peers configured.")
+        print("Add [[fleet.peers]] entries to your config.toml.")
+        return
+
+    client = FleetClient(config.fleet)
+    fleet_map = client.discover_all()
+
+    print(f"vmClaw Fleet — {len(config.fleet.peers)} peer(s) configured\n")
+
+    # Show local node first
+    if config.fleet.node_name:
+        local_vms = find_vm_windows(config.window_keywords)
+        print(f"  [{config.fleet.node_name}] (local — {config.fleet.role})")
+        for vm in local_vms:
+            print(f"    ├ VM: {vm.title}")
+        if not local_vms:
+            print(f"    └ (no VMs detected)")
+        print()
+
+    # Show remote peers
+    for name, data in fleet_map.items():
+        if data["reachable"]:
+            info = data["info"]
+            vms = data["vms"]
+            print(f"  [{name}] ({info.role}) — v{info.version}, {info.vm_count} VM(s)")
+            for vm in vms:
+                print(f"    ├ VM: {vm['title']}")
+            # Show transitive peers
+            for tp in data.get("transitive_peers", []):
+                tp_name = tp.get("node_name", "?")
+                tp_vms = tp.get("vms", [])
+                print(f"    └ [{tp_name}] (via {name})")
+                for tv in tp_vms:
+                    title = tv if isinstance(tv, str) else tv.get("title", "?")
+                    print(f"        ├ VM: {title}")
+        else:
+            print(f"  [{name}] OFFLINE — {data['peer'].url}")
+        print()
+
+
+def cmd_fleet_run(args: argparse.Namespace) -> None:
+    """Send a task to a fleet node."""
+    import time
+
+    from .fleet import FleetClient
+    from .fleet_models import TaskRequest
+
+    config = load_config()
+
+    if not config.fleet.peers:
+        print("No fleet peers configured.")
+        return
+
+    client = FleetClient(config.fleet)
+
+    task_req = TaskRequest(
+        vm_title=args.vm,
+        task=args.task,
+        max_actions=args.max_actions,
+        action_delay=args.delay,
+    )
+
+    if args.all:
+        # Send to all peers
+        print(f"Sending task to all {len(config.fleet.peers)} peer(s)...\n")
+        for peer in config.fleet.peers:
+            result = client.submit_task(peer, task_req)
+            if result and "error" not in result:
+                print(f"  [{peer.name}] Task submitted: {result.get('task_id', '?')}")
+            else:
+                err = result.get("error", "unknown") if result else "unreachable"
+                print(f"  [{peer.name}] Failed: {err}")
+        return
+
+    # Send to specific node
+    peer = client.find_peer_for_node(args.node)
+    if peer is None:
+        print(f"Peer not found: {args.node}")
+        print(f"Available peers: {', '.join(p.name for p in config.fleet.peers)}")
+        return
+
+    print(f"Sending task to [{args.node}]: {args.task}")
+    print(f"  VM: {args.vm} | Max actions: {args.max_actions}\n")
+
+    result = client.submit_task(peer, task_req)
+    if result and "error" not in result:
+        task_id = result.get("task_id", "?")
+        print(f"Task submitted: {task_id}")
+        print(f"Status: {result.get('status', '?')}")
+
+        # Poll for completion if --follow
+        if args.follow:
+            print("\nFollowing task progress (Ctrl+C to detach)...\n")
+            try:
+                while True:
+                    time.sleep(2)
+                    status = client.get_task_status(peer, task_id)
+                    if status is None:
+                        print("  Lost connection to node.")
+                        break
+                    print(f"  [{status.status}] actions={status.actions_taken}", end="")
+                    if status.outcome:
+                        print(f" outcome={status.outcome}", end="")
+                    print()
+                    if status.status in ("done", "error", "stopped", "max_actions"):
+                        break
+            except KeyboardInterrupt:
+                print("\n\nDetached from task. It continues running on the remote node.")
+                print(f"Check status: vmclaw fleet status --node {args.node} --task-id {task_id}")
+    else:
+        err = result.get("error", "unknown") if result else "unreachable"
+        print(f"Failed: {err}")
+
+
 def main() -> None:
     _fix_stdout_encoding()
 
@@ -486,10 +633,41 @@ def main() -> None:
     sub_gui = subparsers.add_parser("gui", help="Launch the graphical interface")
     sub_gui.set_defaults(func=cmd_gui)
 
+    # serve
+    sub_serve = subparsers.add_parser("serve", help="Start the fleet agent server")
+    sub_serve.add_argument("--host", default="0.0.0.0", help="Bind address (default: 0.0.0.0)")
+    sub_serve.add_argument("--port", type=int, default=None, help="Listen port (default: 8077)")
+    sub_serve.add_argument("--name", help="Node name (overrides config)")
+    sub_serve.add_argument("--token", help="Auth token (overrides config)")
+    sub_serve.set_defaults(func=cmd_serve)
+
+    # fleet (parent parser for fleet subcommands)
+    sub_fleet = subparsers.add_parser("fleet", help="Fleet management commands")
+    fleet_sub = sub_fleet.add_subparsers(dest="fleet_command", help="Fleet subcommands")
+
+    # fleet list
+    sub_fleet_list = fleet_sub.add_parser("list", help="List all fleet nodes and VMs")
+    sub_fleet_list.set_defaults(func=cmd_fleet_list)
+
+    # fleet run
+    sub_fleet_run = fleet_sub.add_parser("run", help="Send a task to a fleet node")
+    sub_fleet_run.add_argument("--node", help="Target node name")
+    sub_fleet_run.add_argument("--vm", required=True, help="VM title on the target node")
+    sub_fleet_run.add_argument("--task", required=True, help="Task to execute")
+    sub_fleet_run.add_argument("--max-actions", type=int, default=50, help="Max actions (default: 50)")
+    sub_fleet_run.add_argument("--delay", type=float, default=1.0, help="Action delay in seconds (default: 1.0)")
+    sub_fleet_run.add_argument("--all", action="store_true", help="Send task to all peers")
+    sub_fleet_run.add_argument("-f", "--follow", action="store_true", help="Follow task progress")
+    sub_fleet_run.set_defaults(func=cmd_fleet_run)
+
     args = parser.parse_args()
 
     if args.command is None:
         parser.print_help()
+        return
+
+    if args.command == "fleet" and not getattr(args, "fleet_command", None):
+        sub_fleet.print_help()
         return
 
     args.func(args)

@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 from .models import Config
+from .fleet_models import FleetConfig, PeerConfig
 
 try:
     import tomllib
@@ -63,6 +64,33 @@ def load_config(path: Path | None = None) -> Config:
             config.memory_enabled = bool(agent["memory_enabled"])
         if vm.get("window_keywords"):
             config.window_keywords = vm["window_keywords"]
+
+        # Fleet configuration
+        fleet_data = data.get("fleet", {})
+        if fleet_data:
+            fc = FleetConfig()
+            if "enabled" in fleet_data:
+                fc.enabled = bool(fleet_data["enabled"])
+            if fleet_data.get("node_name"):
+                fc.node_name = fleet_data["node_name"]
+            if fleet_data.get("role"):
+                fc.role = fleet_data["role"]
+            if fleet_data.get("listen_port"):
+                fc.listen_port = int(fleet_data["listen_port"])
+            if fleet_data.get("auth_token"):
+                fc.auth_token = fleet_data["auth_token"]
+
+            # Parse [[fleet.peers]] array
+            peers_data = fleet_data.get("peers", [])
+            for peer in peers_data:
+                if peer.get("name") and peer.get("url"):
+                    fc.peers.append(PeerConfig(
+                        name=peer["name"],
+                        url=peer["url"],
+                        token=peer.get("token", ""),
+                    ))
+
+            config.fleet = fc
 
     # Environment variables override file config
     env_key = os.environ.get("OPENAI_API_KEY")
