@@ -26,19 +26,6 @@ from .orchestrator import run_task
 
 # Available providers and their common models
 PROVIDERS = {
-    "openai": {
-        "name": "OpenAI",
-        "key_env": "OPENAI_API_KEY",
-        "models": [
-            "gpt-4o",
-            "gpt-4o-mini",
-            "gpt-4.1",
-            "gpt-4.1-mini",
-            "gpt-4.1-nano",
-            "o4-mini",
-            "o3",
-        ],
-    },
     "github": {
         "name": "GitHub Models (Copilot)",
         "key_env": "GITHUB_TOKEN",
@@ -62,6 +49,19 @@ PROVIDERS = {
             "mistral-ai/mistral-small-2503",
             "microsoft/Phi-4-multimodal-instruct",
             "microsoft/phi-4",
+        ],
+    },
+    "openai": {
+        "name": "OpenAI",
+        "key_env": "OPENAI_API_KEY",
+        "models": [
+            "gpt-4o",
+            "gpt-4o-mini",
+            "gpt-4.1",
+            "gpt-4.1-mini",
+            "gpt-4.1-nano",
+            "o4-mini",
+            "o3",
         ],
     },
 }
