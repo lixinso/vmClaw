@@ -24,7 +24,7 @@ vmClaw captures your VM screen, sends it to an AI vision model, and executes the
 ## Fleet Mode — Control All Your VMs From One Screen
 
 <p align="center">
-  <img src="res/icon-vmclaw-fleet.png" alt="vmClaw Fleet" width="160">
+  <img src="res/icon-vmclaw-fleet.png" alt="vmClaw Fleet" width="360">
 </p>
 
 What if one AI agent isn't enough? **Fleet mode** lets you command VMs across every machine on your network from a single GUI.
