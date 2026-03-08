@@ -324,6 +324,8 @@ class VmClawGui:
             self._serve_status_var.set(f"Listening :{port} ({node})")
             self._serve_status_label.configure(foreground="#006600")
             self._append_log(f"Fleet server started on port {port}")
+            # Auto-populate tree with local node
+            self._refresh_fleet()
         except Exception as e:
             self._serve_var.set(False)
             self._serve_status_var.set(f"Error: {e}")
@@ -410,18 +412,12 @@ class VmClawGui:
     def _fleet_discover_worker(self) -> None:
         """Background thread: query all fleet peers."""
         try:
-            from .fleet import FleetClient
             config = load_config()
             fleet_cfg = config.fleet
 
-            if not fleet_cfg.peers:
-                self.event_queue.put(("_fleet_result", {"nodes": [], "msg": "No peers configured"}))
-                return
-
-            client = FleetClient(fleet_cfg)
             nodes = []
 
-            # Add local node
+            # Always add local node
             local_vms = find_vm_windows(config.window_keywords)
             nodes.append({
                 "name": fleet_cfg.node_name or "(local)",
@@ -432,17 +428,20 @@ class VmClawGui:
             })
 
             # Query remote peers
-            for peer in fleet_cfg.peers:
-                info = client.get_info(peer)
-                vms = client.list_vms(peer) if info else []
-                nodes.append({
-                    "name": peer.name,
-                    "role": info.role if info else "?",
-                    "reachable": info is not None,
-                    "local": False,
-                    "vms": vms,
-                    "peer": peer,
-                })
+            if fleet_cfg.peers:
+                from .fleet import FleetClient
+                client = FleetClient(fleet_cfg)
+                for peer in fleet_cfg.peers:
+                    info = client.get_info(peer)
+                    vms = client.list_vms(peer) if info else []
+                    nodes.append({
+                        "name": peer.name,
+                        "role": info.role if info else "?",
+                        "reachable": info is not None,
+                        "local": False,
+                        "vms": vms,
+                        "peer": peer,
+                    })
 
             self.event_queue.put(("_fleet_result", {"nodes": nodes, "msg": ""}))
 
