@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, Callable
 from .ai_client import ask_ai
 from .capture import capture_and_resize
 from .executor import execute_action
-from .models import Action, ActionType, Config, VMWindow
+from .models import Action, ActionType, Config, TokenUsage, VMWindow
 
 if TYPE_CHECKING:
     from .memory import MemoryStore
@@ -93,6 +93,7 @@ def run_task(
     consecutive_waits = 0
     max_consecutive_waits = 15
     outcome = "max_actions"
+    total_usage = TokenUsage()
 
     # Search memory for similar past tasks
     memory_context = ""
@@ -140,17 +141,25 @@ def run_task(
             _emit(on_event, "log", f"[Step {step}] Detected repeated actions, adding hint.")
         effective_context = memory_context + stuck_hint
         try:
-            action = ask_ai(
+            action, usage = ask_ai(
                 img, task, history, config, memory_context=effective_context,
             )
+            total_usage.prompt_tokens += usage.prompt_tokens
+            total_usage.completion_tokens += usage.completion_tokens
+            total_usage.total_tokens += usage.total_tokens
+            _emit(on_event, "tokens", total_usage)
         except Exception as e:
             _emit(on_event, "log", f"[Step {step}] AI error: {e}")
             _emit(on_event, "log", f"[Step {step}] Retrying...")
             time.sleep(1.0)
             try:
-                action = ask_ai(
+                action, usage = ask_ai(
                     img, task, history, config, memory_context=effective_context,
                 )
+                total_usage.prompt_tokens += usage.prompt_tokens
+                total_usage.completion_tokens += usage.completion_tokens
+                total_usage.total_tokens += usage.total_tokens
+                _emit(on_event, "tokens", total_usage)
             except Exception as e2:
                 _emit(on_event, "log", f"[Step {step}] AI error on retry: {e2}. Aborting.")
                 outcome = "error"

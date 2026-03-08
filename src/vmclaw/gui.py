@@ -224,6 +224,12 @@ class VmClawGui:
             parent, textvariable=self.status_var, foreground="gray",
         ).grid(row=row, column=0, **pad); row += 1
 
+        # Token usage
+        self.tokens_var = tk.StringVar(value="")
+        ttk.Label(
+            parent, textvariable=self.tokens_var, foreground="gray",
+        ).grid(row=row, column=0, **pad); row += 1
+
         parent.columnconfigure(0, weight=1)
 
     def _build_right_panel(self, parent: ttk.LabelFrame) -> None:
@@ -641,6 +647,7 @@ class VmClawGui:
         self.is_running = True
         self._set_controls_enabled(False)
         self.status_var.set("Starting...")
+        self.tokens_var.set("")
 
         self.agent_thread = threading.Thread(
             target=self._agent_worker,
@@ -815,6 +822,11 @@ class VmClawGui:
                 self.status_var.set(f"Step {data}...")
             elif event_type == "done":
                 self.status_var.set(f"Finished ({data})")
+            elif event_type == "tokens":
+                self.tokens_var.set(
+                    f"Tokens: {data.total_tokens:,}  "
+                    f"(in: {data.prompt_tokens:,} / out: {data.completion_tokens:,})"
+                )
             elif event_type == "_finished":
                 self._on_agent_finished()
             elif event_type == "_voice_result":

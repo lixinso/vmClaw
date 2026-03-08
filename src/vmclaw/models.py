@@ -19,6 +19,13 @@ class ActionType(Enum):
 
 
 @dataclass
+class TokenUsage:
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+
+
+@dataclass
 class Action:
     action: ActionType
     x: Optional[int] = None

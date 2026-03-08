@@ -9,7 +9,7 @@ from io import BytesIO
 from openai import OpenAI
 from PIL import Image
 
-from .models import Action, Config
+from .models import Action, Config, TokenUsage
 
 SYSTEM_PROMPT = """\
 You are an AI agent controlling a virtual machine screen. You receive a screenshot \
@@ -174,7 +174,7 @@ def ask_ai(
     history: list[Action],
     config: Config,
     memory_context: str = "",
-) -> Action:
+) -> tuple[Action, TokenUsage]:
     """Send a screenshot and task to the AI model and get the next action.
 
     Args:
@@ -185,7 +185,7 @@ def ask_ai(
         memory_context: Optional text block of similar past tasks for few-shot context.
 
     Returns:
-        The next Action to execute.
+        Tuple of (Action, TokenUsage).
 
     Raises:
         ValueError: If the AI response cannot be parsed.
@@ -214,17 +214,17 @@ def ask_ai(
     image_url = _image_to_base64(screenshot)
 
     if _uses_responses_api(config.model):
-        raw = _ask_via_responses(client, config.model, user_text, image_url)
+        raw, usage = _ask_via_responses(client, config.model, user_text, image_url)
     else:
-        raw = _ask_via_chat(client, config.model, user_text, image_url)
+        raw, usage = _ask_via_chat(client, config.model, user_text, image_url)
 
-    return _parse_raw_response(raw)
+    return _parse_raw_response(raw), usage
 
 
 def _ask_via_chat(
     client: OpenAI, model: str, user_text: str, image_url: str
-) -> str:
-    """Call the Chat Completions API and return the raw text response."""
+) -> tuple[str, TokenUsage]:
+    """Call the Chat Completions API and return the raw text response + usage."""
     response = client.chat.completions.create(
         model=model,
         messages=[
@@ -243,13 +243,20 @@ def _ask_via_chat(
         max_completion_tokens=256,
         temperature=0.1,
     )
-    return response.choices[0].message.content.strip()
+    usage = TokenUsage()
+    if response.usage:
+        usage = TokenUsage(
+            prompt_tokens=response.usage.prompt_tokens or 0,
+            completion_tokens=response.usage.completion_tokens or 0,
+            total_tokens=response.usage.total_tokens or 0,
+        )
+    return response.choices[0].message.content.strip(), usage
 
 
 def _ask_via_responses(
     client: OpenAI, model: str, user_text: str, image_url: str
-) -> str:
-    """Call the Responses API and return the raw text response."""
+) -> tuple[str, TokenUsage]:
+    """Call the Responses API and return the raw text response + usage."""
     response = client.responses.create(
         model=model,
         instructions=SYSTEM_PROMPT,
@@ -265,4 +272,14 @@ def _ask_via_responses(
         max_output_tokens=256,
         temperature=0.1,
     )
-    return response.output_text.strip()
+    usage = TokenUsage()
+    if response.usage:
+        usage = TokenUsage(
+            prompt_tokens=getattr(response.usage, "input_tokens", 0) or 0,
+            completion_tokens=getattr(response.usage, "output_tokens", 0) or 0,
+            total_tokens=(
+                (getattr(response.usage, "input_tokens", 0) or 0)
+                + (getattr(response.usage, "output_tokens", 0) or 0)
+            ),
+        )
+    return response.output_text.strip(), usage
