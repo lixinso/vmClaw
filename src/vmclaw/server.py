@@ -387,3 +387,50 @@ def start_server(config: Config, host: str = "0.0.0.0", port: int | None = None)
     print()
 
     uvicorn.run(app, host=host, port=listen_port, log_level="info")
+
+
+# ---------------------------------------------------------------------------
+# Non-blocking server for embedding in the GUI
+# ---------------------------------------------------------------------------
+
+_server_instance: Any | None = None
+_server_thread: threading.Thread | None = None
+
+
+def start_server_background(
+    config: Config, host: str = "0.0.0.0", port: int | None = None,
+) -> int:
+    """Start the fleet server in a background daemon thread. Returns the port."""
+    import uvicorn
+
+    global _config, _fleet, _server_instance, _server_thread
+    if _server_instance is not None:
+        raise RuntimeError("Server is already running")
+
+    _config = config
+    _fleet = config.fleet
+
+    listen_port = port or config.fleet.listen_port
+
+    uv_config = uvicorn.Config(
+        app, host=host, port=listen_port, log_level="warning",
+    )
+    _server_instance = uvicorn.Server(uv_config)
+
+    _server_thread = threading.Thread(target=_server_instance.run, daemon=True)
+    _server_thread.start()
+    return listen_port
+
+
+def stop_server_background() -> None:
+    """Signal the background server to shut down."""
+    global _server_instance, _server_thread
+    if _server_instance is not None:
+        _server_instance.should_exit = True
+        _server_instance = None
+        _server_thread = None
+
+
+def is_server_running() -> bool:
+    """Check whether the background server is alive."""
+    return _server_instance is not None and _server_instance.started

@@ -46,11 +46,16 @@ class VmClawGui:
         # {node_name: str, vm_title: str, peer: PeerConfig} or None for local
         self._fleet_target: dict | None = None
         self._fleet_visible: bool = True
+        self._serve_port: int | None = None
 
         self._build_ui()
         self._populate_providers()
         self._refresh_vm_windows()
         self._poll_queue()
+
+        # Auto-start fleet server if fleet is enabled
+        if self.config.fleet.enabled:
+            self.root.after(500, self._start_serve)
 
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
@@ -259,7 +264,23 @@ class VmClawGui:
         # Refresh button
         ttk.Button(
             parent, text="Refresh Fleet", command=self._refresh_fleet,
-        ).pack(padx=5, pady=(2, 5), fill=tk.X)
+        ).pack(padx=5, pady=(2, 2), fill=tk.X)
+
+        # Serve checkbox
+        self._serve_var = tk.BooleanVar(value=self.config.fleet.enabled)
+        self._serve_check = ttk.Checkbutton(
+            parent, text="Serve", variable=self._serve_var,
+            command=self._on_serve_toggle,
+        )
+        self._serve_check.pack(padx=5, pady=(0, 2), anchor="w")
+
+        # Serve status label
+        self._serve_status_var = tk.StringVar(value="")
+        self._serve_status_label = ttk.Label(
+            parent, textvariable=self._serve_status_var,
+            foreground="gray", font=("Segoe UI", 7),
+        )
+        self._serve_status_label.pack(padx=5, pady=(0, 5), anchor="w")
 
     def _toggle_fleet_nav(self) -> None:
         """Show or hide the fleet navigation sidebar."""
@@ -276,6 +297,48 @@ class VmClawGui:
                 before=self._left_frame,
             )
         self._fleet_visible = not self._fleet_visible
+
+    # ------------------------------------------------------------------
+    # Fleet server (serve) control
+    # ------------------------------------------------------------------
+
+    def _on_serve_toggle(self) -> None:
+        """Handle the Serve checkbox toggle."""
+        if self._serve_var.get():
+            self._start_serve()
+        else:
+            self._stop_serve()
+
+    def _start_serve(self) -> None:
+        """Start the fleet server in the background."""
+        from .server import start_server_background, is_server_running
+
+        if is_server_running():
+            return
+
+        try:
+            port = start_server_background(self.config)
+            self._serve_port = port
+            self._serve_var.set(True)
+            node = self.config.fleet.node_name or "local"
+            self._serve_status_var.set(f"Listening :{port} ({node})")
+            self._serve_status_label.configure(foreground="#006600")
+            self._append_log(f"Fleet server started on port {port}")
+        except Exception as e:
+            self._serve_var.set(False)
+            self._serve_status_var.set(f"Error: {e}")
+            self._serve_status_label.configure(foreground="red")
+            self._append_log(f"Fleet server failed: {e}")
+
+    def _stop_serve(self) -> None:
+        """Stop the fleet server."""
+        from .server import stop_server_background
+
+        stop_server_background()
+        self._serve_port = None
+        self._serve_var.set(False)
+        self._serve_status_var.set("")
+        self._append_log("Fleet server stopped")
 
     # ------------------------------------------------------------------
     # Provider / Model population
@@ -941,6 +1004,9 @@ class VmClawGui:
     def _on_close(self) -> None:
         if self.is_running:
             self.stop_event.set()
+        # Stop fleet server if running
+        if self._serve_port is not None:
+            self._stop_serve()
         self.root.destroy()
 
 
