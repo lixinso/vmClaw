@@ -37,7 +37,7 @@ memory_enabled = true
 
 [vm]
 # Keywords to match VM window titles
-window_keywords = ["vmconnect", "vmware", "virtualbox", "qemu", "hyper-v"]
+window_keywords = ["vmconnect", "vmware", "virtualbox", "qemu", "hyper-v", "virtual machine connection"]
 
 [fleet]
 # Enable fleet mode for distributed multi-node VM control
