@@ -24,10 +24,9 @@ class FleetClient:
 
     def _headers(self, peer: PeerConfig) -> dict[str, str]:
         """Build auth headers for a peer."""
-        headers: dict[str, str] = {}
-        if peer.token:
-            headers["Authorization"] = f"Bearer {peer.token}"
-        return headers
+        # Always send Authorization header — HTTPBearer on older servers
+        # rejects requests without it, even when no auth token is configured.
+        return {"Authorization": f"Bearer {peer.token or 'none'}"}
 
     def _client(self, peer: PeerConfig) -> httpx.Client:
         """Create a sync HTTP client for a peer."""

@@ -28,7 +28,7 @@ _fleet: FleetConfig | None = None
 # Running tasks: task_id -> {thread, stop_event, status, events_queue}
 _tasks: dict[str, dict[str, Any]] = {}
 
-_security = HTTPBearer()
+_security = HTTPBearer(auto_error=False)
 
 
 def _get_config() -> Config:
@@ -48,13 +48,15 @@ def _get_fleet() -> FleetConfig:
 # ---------------------------------------------------------------------------
 
 async def _verify_token(
-    credentials: HTTPAuthorizationCredentials = Depends(_security),
+    credentials: HTTPAuthorizationCredentials | None = Depends(_security),
 ) -> str:
     """Validate the Bearer token against this node's auth_token."""
     fleet = _get_fleet()
     if not fleet.auth_token:
         # No auth configured — allow all (dev mode)
-        return credentials.credentials
+        return credentials.credentials if credentials else ""
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Missing auth token")
     if credentials.credentials != fleet.auth_token:
         raise HTTPException(status_code=401, detail="Invalid or missing auth token")
     return credentials.credentials
