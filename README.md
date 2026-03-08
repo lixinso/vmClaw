@@ -4,7 +4,7 @@
   <img src="res/icon-crab-in-container.png" alt="vmClaw logo" width="200">
 </p>
 
-**AI agent that sees and operates your virtual machines — free with GitHub Copilot.**
+**AI agent that sees and operates your virtual machines.**
 
 vmClaw captures your VM screen, sends it to an AI vision model, and executes the actions it decides on — clicks, typing, keyboard shortcuts, scrolling — in a continuous loop until the task is done.
 
