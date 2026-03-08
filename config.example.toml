@@ -1,21 +1,21 @@
 [api]
-# Provider: "openai" (default) or "github" (GitHub Models via Copilot)
+# Provider: "github" (GitHub Models via Copilot) or "openai"
 # Can also be set via VMCLAW_PROVIDER environment variable
-provider = "openai"
-
-# OpenAI API key (or set OPENAI_API_KEY environment variable)
-# Required when provider = "openai"
-openai_api_key = "sk-..."
+provider = "github"
 
 # GitHub Personal Access Token with models:read scope
-# (or set GITHUB_TOKEN environment variable)
+# (or set GITHUB_TOKEN environment variable, or use: gh auth login)
 # Required when provider = "github"
 # github_token = "ghp_..."
 
+# OpenAI API key (or set OPENAI_API_KEY environment variable)
+# Required when provider = "openai"
+# openai_api_key = "sk-..."
+
 # Model to use for vision (or set VMCLAW_MODEL environment variable)
+# GitHub Models examples: "claude-opus-4.6", "claude-sonnet-4.6", "openai/gpt-4o", "openai/o4-mini"
 # OpenAI examples: "gpt-4o", "gpt-4o-mini"
-# GitHub Models examples: "openai/gpt-4o", "openai/gpt-4o-mini", "openai/o4-mini"
-model = "gpt-4o"
+model = "claude-opus-4.6"
 
 # Optional: override the API base URL for any provider
 # Default for openai: https://api.openai.com/v1
@@ -32,6 +32,31 @@ action_delay = 1.0
 # Screenshot resolution (width). Height scales proportionally.
 screenshot_width = 1024
 
+# Enable memory to recall similar past tasks
+memory_enabled = true
+
 [vm]
 # Keywords to match VM window titles
 window_keywords = ["vmconnect", "vmware", "virtualbox", "qemu", "hyper-v"]
+
+[fleet]
+# Enable fleet mode for distributed multi-node VM control
+enabled = false
+
+# Display name for this node in the fleet
+node_name = "my-pc"
+
+# Role: "hub" (coordinator only), "agent" (worker only), or "hub+agent" (both)
+role = "hub+agent"
+
+# Port the fleet server listens on
+listen_port = 8077
+
+# Auth token to protect this node's API (peers must send this to connect)
+auth_token = ""
+
+# Peer nodes to connect to
+# [[fleet.peers]]
+# name = "other-pc"
+# url = "http://192.168.1.50:8077"
+# token = "other-pc-auth-token"
