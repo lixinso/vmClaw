@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import ctypes
+import io
 import queue
 import subprocess
 import sys
 import threading
 import tkinter as tk
-from tkinter import ttk, scrolledtext, messagebox
+from tkinter import ttk, scrolledtext, filedialog, messagebox
 from typing import Any
 
 from PIL import Image, ImageDraw, ImageTk
@@ -231,6 +232,12 @@ class VmClawGui:
         )
         self.screenshot_label.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         self.screenshot_label.bind("<Configure>", self._on_screenshot_resize)
+
+        # Copy / Save button bar
+        btn_bar = ttk.Frame(parent)
+        btn_bar.pack(fill=tk.X, padx=5, pady=(0, 5))
+        ttk.Button(btn_bar, text="Copy", width=8, command=self._copy_screenshot).pack(side=tk.LEFT, padx=(0, 4))
+        ttk.Button(btn_bar, text="Save", width=8, command=self._save_screenshot).pack(side=tk.LEFT)
 
     def _build_log_panel(self, parent: ttk.LabelFrame) -> None:
         self.log_text = scrolledtext.ScrolledText(
@@ -882,6 +889,63 @@ class VmClawGui:
     def _on_screenshot_resize(self, _event: Any) -> None:
         if self._raw_screenshot is not None:
             self._render_screenshot(self._raw_screenshot)
+
+    def _copy_screenshot(self) -> None:
+        """Copy the current screenshot to the Windows clipboard."""
+        if self._raw_screenshot is None:
+            self._append_log("No screenshot to copy.")
+            return
+        try:
+            buf = io.BytesIO()
+            self._raw_screenshot.convert("RGB").save(buf, "BMP")
+            bmp_data = buf.getvalue()[14:]  # strip BMP file header
+
+            import win32clipboard  # type: ignore[import-untyped]
+            win32clipboard.OpenClipboard()
+            win32clipboard.EmptyClipboard()
+            win32clipboard.SetClipboardData(win32clipboard.CF_DIB, bmp_data)
+            win32clipboard.CloseClipboard()
+            self._append_log("Screenshot copied to clipboard.")
+        except ImportError:
+            # Fallback using ctypes if pywin32 is not installed
+            CF_DIB = 8
+            buf = io.BytesIO()
+            self._raw_screenshot.convert("RGB").save(buf, "BMP")
+            bmp_data = buf.getvalue()[14:]
+
+            kernel32 = ctypes.windll.kernel32
+            user32 = ctypes.windll.user32
+
+            gmem = kernel32.GlobalAlloc(0x0042, len(bmp_data))
+            ptr = kernel32.GlobalLock(gmem)
+            ctypes.memmove(ptr, bmp_data, len(bmp_data))
+            kernel32.GlobalUnlock(gmem)
+
+            user32.OpenClipboard(0)
+            user32.EmptyClipboard()
+            user32.SetClipboardData(CF_DIB, gmem)
+            user32.CloseClipboard()
+            self._append_log("Screenshot copied to clipboard.")
+        except Exception as exc:
+            self._append_log(f"Copy failed: {exc}")
+
+    def _save_screenshot(self) -> None:
+        """Save the current screenshot to a user-chosen file."""
+        if self._raw_screenshot is None:
+            self._append_log("No screenshot to save.")
+            return
+        path = filedialog.asksaveasfilename(
+            title="Save Screenshot",
+            defaultextension=".png",
+            filetypes=[("PNG", "*.png"), ("JPEG", "*.jpg"), ("BMP", "*.bmp"), ("All Files", "*.*")],
+        )
+        if not path:
+            return
+        try:
+            self._raw_screenshot.save(path)
+            self._append_log(f"Screenshot saved to {path}")
+        except Exception as exc:
+            self._append_log(f"Save failed: {exc}")
 
     def _handle_action(self, action: Action) -> None:
         desc = self._format_action_short(action)
