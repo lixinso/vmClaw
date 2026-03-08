@@ -40,6 +40,7 @@ class VmClawGui:
         self.latest_photo: ImageTk.PhotoImage | None = None
         self._raw_screenshot: Image.Image | None = None
         self.is_running = False
+        self._voice_recording = False
 
         self._build_ui()
         self._populate_providers()
@@ -169,6 +170,10 @@ class VmClawGui:
             btn_frame, text="Stop", command=self._on_stop, state=tk.DISABLED,
         )
         self.stop_btn.pack(side=tk.LEFT, padx=5)
+        self.voice_btn = ttk.Button(
+            btn_frame, text="Voice", command=self._on_voice,
+        )
+        self.voice_btn.pack(side=tk.LEFT, padx=5)
 
         # Status
         self.status_var = tk.StringVar(value="Idle")
@@ -332,6 +337,7 @@ class VmClawGui:
         self.task_text.configure(state=state)
         self.start_btn.configure(state=state)
         self.stop_btn.configure(state=tk.NORMAL if not enabled else tk.DISABLED)
+        self.voice_btn.configure(state=state)
 
     # ------------------------------------------------------------------
     # Agent worker thread
@@ -395,6 +401,13 @@ class VmClawGui:
                 self.status_var.set(f"Finished ({data})")
             elif event_type == "_finished":
                 self._on_agent_finished()
+            elif event_type == "_voice_result":
+                self.task_text.insert(tk.END, str(data))
+            elif event_type == "_voice_error":
+                self._append_log(f"Voice: {data}")
+            elif event_type == "_voice_done":
+                self._voice_recording = False
+                self.voice_btn.configure(text="Voice")
 
         self.root.after(100, self._poll_queue)
 
@@ -483,6 +496,78 @@ class VmClawGui:
         elif action.action == ActionType.DONE:
             return "Task complete"
         return str(action.action.value)
+
+    # ------------------------------------------------------------------
+    # Voice input
+    # ------------------------------------------------------------------
+
+    def _on_voice(self) -> None:
+        """Toggle voice recording on/off."""
+        if self._voice_recording:
+            # Stop recording early
+            try:
+                import sounddevice as sd
+                sd.stop()
+            except Exception:
+                pass
+            return
+
+        self._voice_recording = True
+        self.voice_btn.configure(text="Listening...")
+        self._append_log("Voice: recording... (click 'Listening...' to stop)")
+
+        thread = threading.Thread(target=self._voice_worker, daemon=True)
+        thread.start()
+
+    def _voice_worker(self) -> None:
+        """Record audio and transcribe in a background thread."""
+        try:
+            import numpy as np
+            import sounddevice as sd
+            import speech_recognition as sr
+
+            sample_rate = 16000
+            max_seconds = 30
+
+            # Record audio
+            audio_data = sd.rec(
+                int(max_seconds * sample_rate),
+                samplerate=sample_rate,
+                channels=1,
+                dtype="int16",
+            )
+            sd.wait()  # Blocks until done or sd.stop() called
+
+            # Trim trailing zeros (from early stop via sd.stop())
+            flat = audio_data.flatten()
+            # Find last non-zero sample
+            nonzero = np.nonzero(flat)[0]
+            if len(nonzero) == 0:
+                self.event_queue.put(("_voice_error", "No audio recorded."))
+                return
+            flat = flat[: nonzero[-1] + 1]
+
+            if len(flat) < sample_rate * 0.3:
+                self.event_queue.put(("_voice_error", "Recording too short."))
+                return
+
+            # Transcribe using Google's free speech recognition
+            recognizer = sr.Recognizer()
+            audio = sr.AudioData(flat.tobytes(), sample_rate, 2)
+            text = recognizer.recognize_google(audio)
+            self.event_queue.put(("_voice_result", text))
+            self.event_queue.put(("log", f"Voice: \"{text}\""))
+
+        except ImportError as e:
+            self.event_queue.put((
+                "_voice_error",
+                f"Missing dependency: {e}. Run: pip install sounddevice SpeechRecognition",
+            ))
+        except Exception as e:
+            err_name = type(e).__name__
+            self.event_queue.put(("_voice_error", f"{err_name}: {e}"))
+        finally:
+            self.event_queue.put(("_voice_done", None))
 
     # ------------------------------------------------------------------
     # Admin helpers

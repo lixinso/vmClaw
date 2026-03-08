@@ -15,6 +15,9 @@ dependencies = [
     "Pillow>=10.0",
     "rich>=13.0",
     "sqlite-vec>=0.1.6",
+    "sounddevice>=0.4",
+    "numpy>=1.20",
+    "SpeechRecognition>=3.10",
 ]
 
 [project.scripts]
