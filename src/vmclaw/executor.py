@@ -182,11 +182,21 @@ def _post_click(ih_hwnd: int, screen_x: int, screen_y: int) -> None:
 
 def _post_scroll(ih_hwnd: int, screen_x: int, screen_y: int, clicks: int) -> None:
     """Send a scroll event to IHWindowClass via PostMessage WM_MOUSEWHEEL."""
-    lparam = _ih_lparam(ih_hwnd, screen_x, screen_y)
-    # wParam high word = wheel delta (120 per click), low word = key state
+    user32 = ctypes.windll.user32
+
+    # First move the VM guest cursor to the target position so the scroll
+    # is directed at the correct element inside the guest.
+    client_lparam = _ih_lparam(ih_hwnd, screen_x, screen_y)
+    user32.PostMessageW(ih_hwnd, WM_MOUSEMOVE, 0, client_lparam)
+    time.sleep(0.01)
+
+    # WM_MOUSEWHEEL uses *screen* coordinates in lparam (unlike other mouse msgs)
+    screen_lparam = (screen_y << 16) | (screen_x & 0xFFFF)
+
+    # wParam high word = wheel delta (signed 16-bit), low word = key state
     delta = clicks * 120
     wparam = (delta & 0xFFFF) << 16
-    ctypes.windll.user32.PostMessageW(ih_hwnd, WM_MOUSEWHEEL, wparam, lparam)
+    user32.PostMessageW(ih_hwnd, WM_MOUSEWHEEL, wparam, screen_lparam)
 
 
 # ---- Keyboard via PostMessage ----
@@ -410,7 +420,9 @@ def execute_action(
         left, top, right, bottom = get_window_rect(hwnd)
         center_x = (left + right) // 2
         center_y = (top + bottom) // 2
-        clicks = 3 if direction == "down" else -3
+        # WM_MOUSEWHEEL: positive delta = scroll UP, negative = scroll DOWN
+        # pyautogui.scroll: positive = scroll UP, negative = scroll DOWN
+        clicks = -3 if direction == "down" else 3
 
         if ih_hwnd:
             _post_scroll(ih_hwnd, center_x, center_y, clicks)
