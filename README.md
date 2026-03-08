@@ -1,10 +1,14 @@
 # vmClaw 🦀
 
 <p align="center">
-  <img src="res/icon-crab-in-container.png" alt="vmClaw logo" width="200">
+<strong>Don't share your pool with your Claws.<br>
+Give each AI employee its own identity and digital workspace.<br>
+You run the fleet like a boss.</strong>
 </p>
 
-**AI agent that sees and operates your virtual machines.**
+<p align="center">
+  <img src="res/icon-crab-in-container.png" alt="vmClaw logo" width="200">
+</p>
 
 vmClaw captures your VM screen, sends it to an AI vision model, and executes the actions it decides on — clicks, typing, keyboard shortcuts, scrolling — in a continuous loop until the task is done.
 
