@@ -126,6 +126,17 @@ class VmClawGui:
 
         row = 0
 
+        # Target indicator (always visible, at top)
+        self.target_var = tk.StringVar(value="Target: local")
+        ttk.Label(
+            parent, textvariable=self.target_var, foreground="#006699",
+            font=("Segoe UI", 9, "bold"),
+        ).grid(row=row, column=0, **pad); row += 1
+
+        ttk.Separator(parent, orient=tk.HORIZONTAL).grid(
+            row=row, column=0, pady=4, sticky="ew",
+        ); row += 1
+
         # Provider
         ttk.Label(parent, text="Provider:").grid(row=row, column=0, **pad); row += 1
         self.provider_var = tk.StringVar()
@@ -177,17 +188,6 @@ class VmClawGui:
         self.memory_var = tk.BooleanVar(value=self.config.memory_enabled)
         ttk.Checkbutton(
             parent, text="Enable AI Memory", variable=self.memory_var,
-        ).grid(row=row, column=0, **pad); row += 1
-
-        ttk.Separator(parent, orient=tk.HORIZONTAL).grid(
-            row=row, column=0, pady=4, sticky="ew",
-        ); row += 1
-
-        # Target indicator (always visible)
-        self.target_var = tk.StringVar(value="Target: local")
-        ttk.Label(
-            parent, textvariable=self.target_var, foreground="#006699",
-            font=("Segoe UI", 8),
         ).grid(row=row, column=0, **pad); row += 1
 
         ttk.Separator(parent, orient=tk.HORIZONTAL).grid(
@@ -412,7 +412,8 @@ class VmClawGui:
     def _on_local_vm_selected(self, _event: Any = None) -> None:
         """When a local VM is selected in the combo, clear fleet target."""
         self._fleet_target = None
-        self.target_var.set("Target: local")
+        vm_name = self.vm_var.get()
+        self.target_var.set(f"Target: local / {vm_name}" if vm_name else "Target: local")
         # Deselect fleet tree
         for sel in self.fleet_tree.selection():
             self.fleet_tree.selection_remove(sel)
@@ -555,6 +556,7 @@ class VmClawGui:
                     "peer": peer,
                 }
                 self.target_var.set(f"Target: {node_name} / {vm_title}")
+                self.vm_var.set(vm_title)
             else:
                 self._fleet_target = None
                 self.target_var.set("Target: local")
@@ -563,7 +565,7 @@ class VmClawGui:
             # A local VM was selected — find it in the combo
             vm_title = text[4:] if text.startswith("VM: ") else text
             self._fleet_target = None
-            self.target_var.set("Target: local")
+            self.target_var.set(f"Target: local / {vm_title}")
             # Try to select it in the local VM combo
             for i, w in enumerate(self.vm_windows):
                 if w.title == vm_title:
