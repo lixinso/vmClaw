@@ -57,6 +57,9 @@ class VmClawGui:
         if self.config.fleet.enabled:
             self.root.after(500, self._start_serve)
 
+        # Auto-refresh fleet tree after UI is ready
+        self.root.after(1500, self._refresh_fleet)
+
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
     # ------------------------------------------------------------------
