@@ -622,7 +622,11 @@ class VmClawGui:
             justify="left",
         ).pack(padx=10, pady=(10, 5), anchor="w")
 
-        # Scrollable frame with checkboxes
+        # Pack buttons FIRST (at bottom) so they always have space
+        btn_frame = ttk.Frame(dlg)
+        btn_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=(5, 10))
+
+        # Scrollable frame with checkboxes (fills remaining space)
         list_frame = ttk.Frame(dlg)
         list_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
@@ -654,10 +658,6 @@ class VmClawGui:
                 anchor="w", padx=5, pady=2,
             )
             check_vars.append((var, node))
-
-        # Buttons
-        btn_frame = ttk.Frame(dlg)
-        btn_frame.pack(fill=tk.X, padx=10, pady=(5, 10))
 
         def on_add():
             selected = [node for var, node in check_vars if var.get()]
