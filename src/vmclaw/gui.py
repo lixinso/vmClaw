@@ -282,6 +282,12 @@ class VmClawGui:
             parent, text="Refresh Fleet", command=self._refresh_fleet,
         ).pack(padx=5, pady=(2, 2), fill=tk.X)
 
+        # Scan Network button
+        self._scan_btn = ttk.Button(
+            parent, text="Scan Network", command=self._scan_network,
+        )
+        self._scan_btn.pack(padx=5, pady=(2, 2), fill=tk.X)
+
         # Serve checkbox
         self._serve_var = tk.BooleanVar(value=self.config.fleet.enabled)
         self._serve_check = ttk.Checkbutton(
@@ -467,6 +473,53 @@ class VmClawGui:
         except Exception as e:
             self.event_queue.put(("_fleet_result", {"nodes": [], "msg": str(e)}))
 
+    def _scan_network(self) -> None:
+        """Scan the local subnet for vmClaw instances."""
+        self._append_log("Fleet: scanning network...")
+        self._scan_btn.configure(state=tk.DISABLED)
+        thread = threading.Thread(target=self._scan_network_worker, daemon=True)
+        thread.start()
+
+    def _scan_network_worker(self) -> None:
+        """Background thread: scan subnet for vmClaw nodes."""
+        try:
+            from .scanner import get_local_ip, scan_subnet
+
+            def on_progress(scanned: int, total: int) -> None:
+                self.event_queue.put((
+                    "_scan_progress",
+                    {"scanned": scanned, "total": total},
+                ))
+
+            port = self.config.fleet.listen_port or 8077
+            nodes = scan_subnet(port=port, on_progress=on_progress)
+
+            # Filter out nodes already configured as peers
+            existing_urls = set()
+            for peer in self.config.fleet.peers:
+                existing_urls.add(peer.url.rstrip("/"))
+
+            # Also exclude self
+            local_ip = get_local_ip()
+
+            new_nodes = []
+            for node in nodes:
+                url = f"http://{node.ip}:{node.port}"
+                if url not in existing_urls and node.ip != local_ip:
+                    new_nodes.append(node)
+
+            self.event_queue.put(("_scan_result", {
+                "nodes": new_nodes,
+                "total_found": len(nodes),
+            }))
+
+        except Exception as e:
+            self.event_queue.put(("_scan_result", {
+                "nodes": [],
+                "total_found": 0,
+                "error": str(e),
+            }))
+
     def _populate_fleet_tree(self, data: dict) -> None:
         """Populate the fleet tree view with discovered nodes."""
         # Clear existing items
@@ -525,6 +578,135 @@ class VmClawGui:
         count = len(nodes)
         online = sum(1 for n in nodes if n.get("reachable"))
         self._append_log(f"Fleet: {count} node(s), {online} online.")
+
+    def _show_scan_results(self, data: dict) -> None:
+        """Show scan results in a dialog and let user add new peers."""
+        nodes = data.get("nodes", [])
+        total_found = data.get("total_found", 0)
+        error = data.get("error")
+
+        if error:
+            self._append_log(f"Fleet scan error: {error}")
+            messagebox.showerror("Scan Error", f"Network scan failed:\n{error}")
+            return
+
+        if not nodes:
+            self._append_log(
+                f"Fleet scan: found {total_found} node(s), "
+                "none are new (all already in config)."
+            )
+            messagebox.showinfo(
+                "Scan Complete",
+                f"Found {total_found} vmClaw node(s) on the network.\n"
+                "All are already configured as peers.",
+            )
+            return
+
+        self._append_log(
+            f"Fleet scan: found {total_found} node(s), {len(nodes)} new."
+        )
+
+        # Build a Toplevel dialog
+        dlg = tk.Toplevel(self.root)
+        dlg.title("Scan Results - New Peers Found")
+        dlg.geometry("420x320")
+        dlg.resizable(False, True)
+        dlg.transient(self.root)
+        dlg.grab_set()
+
+        ttk.Label(
+            dlg,
+            text=f"Found {len(nodes)} new vmClaw node(s) on the network.\n"
+                 "Select nodes to add to config.toml:",
+            wraplength=390,
+            justify="left",
+        ).pack(padx=10, pady=(10, 5), anchor="w")
+
+        # Scrollable frame with checkboxes
+        list_frame = ttk.Frame(dlg)
+        list_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+
+        canvas = tk.Canvas(list_frame, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(
+            list_frame, orient="vertical", command=canvas.yview,
+        )
+        inner = ttk.Frame(canvas)
+
+        inner.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all")),
+        )
+        canvas.create_window((0, 0), window=inner, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        check_vars = []
+        for node in nodes:
+            var = tk.BooleanVar(value=True)
+            name = node.node_name or node.ip
+            text = (
+                f"{name}  ({node.ip}:{node.port})  "
+                f"[{node.role}, {node.vm_count} VM(s)]"
+            )
+            ttk.Checkbutton(inner, text=text, variable=var).pack(
+                anchor="w", padx=5, pady=2,
+            )
+            check_vars.append((var, node))
+
+        # Buttons
+        btn_frame = ttk.Frame(dlg)
+        btn_frame.pack(fill=tk.X, padx=10, pady=(5, 10))
+
+        def on_add():
+            selected = [node for var, node in check_vars if var.get()]
+            if not selected:
+                dlg.destroy()
+                return
+            self._add_scanned_peers(selected)
+            dlg.destroy()
+
+        ttk.Button(btn_frame, text="Add Selected", command=on_add).pack(
+            side=tk.RIGHT, padx=(5, 0),
+        )
+        ttk.Button(btn_frame, text="Cancel", command=dlg.destroy).pack(
+            side=tk.RIGHT,
+        )
+
+    def _add_scanned_peers(self, nodes: list) -> None:
+        """Write selected scanned nodes to config.toml and refresh fleet."""
+        from .config import append_peers_to_config
+        from .fleet_models import PeerConfig
+
+        peers = []
+        for node in nodes:
+            name = node.node_name or node.ip
+            peers.append(PeerConfig(
+                name=name,
+                url=f"http://{node.ip}:{node.port}",
+                token="",
+            ))
+
+        try:
+            config_path = append_peers_to_config(peers)
+            names = ", ".join(p.name for p in peers)
+            self._append_log(
+                f"Fleet: added {len(peers)} peer(s) to {config_path}: {names}"
+            )
+
+            # Reload config so in-memory model picks up new peers
+            self.config = load_config()
+
+            # Auto-refresh the fleet tree
+            self._refresh_fleet()
+
+        except Exception as e:
+            self._append_log(f"Fleet: failed to save peers: {e}")
+            messagebox.showerror(
+                "Save Error",
+                f"Could not write to config.toml:\n{e}",
+            )
 
     def _on_fleet_select(self, _event: Any = None) -> None:
         """Handle selection in the fleet tree view."""
@@ -893,6 +1075,14 @@ class VmClawGui:
                 self.voice_btn.configure(text="Voice")
             elif event_type == "_fleet_result":
                 self._populate_fleet_tree(data)
+            elif event_type == "_scan_progress":
+                scanned = data["scanned"]
+                total = data["total"]
+                self._serve_status_var.set(f"Scanning: {scanned}/{total}")
+            elif event_type == "_scan_result":
+                self._serve_status_var.set("")
+                self._scan_btn.configure(state=tk.NORMAL)
+                self._show_scan_results(data)
 
         self.root.after(100, self._poll_queue)
 

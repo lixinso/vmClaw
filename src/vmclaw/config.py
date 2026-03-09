@@ -118,3 +118,40 @@ def load_config(path: Path | None = None) -> Config:
         config.provider = "github"
 
     return config
+
+
+def append_peers_to_config(
+    peers: list[PeerConfig],
+    path: Path | None = None,
+) -> Path:
+    """Append new [[fleet.peers]] entries to config.toml.
+
+    Appends raw TOML text to the end of the file. Existing content is not
+    modified. TOML allows [[fleet.peers]] array-of-tables entries anywhere
+    after the [fleet] section.
+
+    Returns:
+        The path that was written to.
+
+    Raises:
+        FileNotFoundError: If no config file is found.
+    """
+    if path is None:
+        path = find_config_file()
+    if path is None:
+        raise FileNotFoundError("No config.toml found. Create one first.")
+
+    lines: list[str] = []
+    for peer in peers:
+        lines.append("")
+        lines.append("[[fleet.peers]]")
+        lines.append(f'name = "{peer.name}"')
+        lines.append(f'url = "{peer.url}"')
+        lines.append(f'token = "{peer.token}"')
+
+    text = "\n".join(lines) + "\n"
+
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(text)
+
+    return path
