@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from .models import Config
+from .models import Config, VMTarget
 from .fleet_models import FleetConfig, PeerConfig
 
 try:
@@ -64,6 +64,15 @@ def load_config(path: Path | None = None) -> Config:
             config.memory_enabled = bool(agent["memory_enabled"])
         if vm.get("window_keywords"):
             config.window_keywords = vm["window_keywords"]
+
+        # Parse [[vm.targets]] array for per-VM memory identity
+        targets_data = vm.get("targets", [])
+        for target in targets_data:
+            if target.get("name") and target.get("keywords"):
+                config.vm_targets.append(VMTarget(
+                    name=target["name"],
+                    keywords=target["keywords"],
+                ))
 
         # Fleet configuration
         fleet_data = data.get("fleet", {})

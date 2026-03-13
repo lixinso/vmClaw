@@ -405,11 +405,12 @@ def cmd_run(args: argparse.Namespace) -> None:
     memory = None
     if config.memory_enabled:
         try:
-            from .memory import MemoryStore
+            from .memory import MemoryStore, resolve_vm_id
 
-            memory = MemoryStore()
+            vm_id = resolve_vm_id(vm.title, config)
+            memory = MemoryStore(vm_id=vm_id)
             memory.open(config)
-            print("Memory: enabled")
+            print(f"Memory: enabled (vm_id={vm_id})")
         except Exception as e:
             print(f"Memory: disabled ({e})")
             memory = None

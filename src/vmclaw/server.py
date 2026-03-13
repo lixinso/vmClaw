@@ -334,8 +334,9 @@ def _run_task_thread(
     memory = None
     if config.memory_enabled:
         try:
-            from .memory import MemoryStore
-            memory = MemoryStore()
+            from .memory import MemoryStore, resolve_vm_id
+            vm_id = resolve_vm_id(vm.title, config)
+            memory = MemoryStore(vm_id=vm_id)
             memory.open(config)
         except Exception:
             memory = None

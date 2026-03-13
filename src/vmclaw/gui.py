@@ -899,11 +899,12 @@ class VmClawGui:
         memory = None
         if config.memory_enabled:
             try:
-                from .memory import MemoryStore
+                from .memory import MemoryStore, resolve_vm_id
 
-                memory = MemoryStore()
+                vm_id = resolve_vm_id(vm.title, config)
+                memory = MemoryStore(vm_id=vm_id)
                 memory.open(config)
-                self.event_queue.put(("log", "Memory: enabled"))
+                self.event_queue.put(("log", f"Memory: enabled (vm_id={vm_id})"))
             except Exception as e:
                 self.event_queue.put(("log", f"Memory: disabled ({e})"))
                 memory = None
