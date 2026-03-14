@@ -39,6 +39,17 @@ memory_enabled = true
 # Keywords to match VM window titles
 window_keywords = ["vmconnect", "vmware", "virtualbox", "qemu", "hyper-v", "virtual machine connection"]
 
+# Map VM windows to stable identity names for per-VM memory isolation.
+# Each VM gets its own memory database under ~/.vmclaw/memory/<name>/memory.db.
+# If no target matches, a sanitised slug of the window title is used.
+# [[vm.targets]]
+# name = "win11-dev"
+# keywords = ["WIN11-DEV"]
+#
+# [[vm.targets]]
+# name = "ubuntu-server"
+# keywords = ["Ubuntu Server"]
+
 [fleet]
 # Enable fleet mode for distributed multi-node VM control
 enabled = false
@@ -46,7 +57,9 @@ enabled = false
 # Display name for this node in the fleet
 node_name = "my-pc"
 
-# Role: "hub" (coordinator only), "agent" (worker only), or "hub+agent" (both)
+# Role: "hub" (coordinator only), "agent" (worker only), "hub+agent" (both),
+#       or add "+gateway" to expose fleet-wide aggregated API for mobile clients.
+#       Examples: "hub+agent+gateway", "agent+gateway", "gateway"
 role = "hub+agent"
 
 # Port the fleet server listens on

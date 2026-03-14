@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import sqlite3
 import struct
 from dataclasses import dataclass
@@ -18,8 +19,10 @@ log = logging.getLogger(__name__)
 EMBEDDING_MODEL = "text-embedding-3-small"
 EMBEDDING_DIM = 1536
 
-DEFAULT_DB_DIR = Path.home() / ".vmclaw"
-DEFAULT_DB_PATH = DEFAULT_DB_DIR / "memory.db"
+DEFAULT_MEMORY_DIR = Path.home() / ".vmclaw" / "memory"
+
+_SLUG_RE = re.compile(r"[^a-z0-9]+")
+_MAX_SLUG_LEN = 64
 
 _SCHEMA_SQL = """\
 CREATE TABLE IF NOT EXISTS task_runs (
@@ -44,6 +47,22 @@ def _serialize_f32(vec: list[float]) -> bytes:
     return struct.pack(f"{len(vec)}f", *vec)
 
 
+def resolve_vm_id(vm_title: str, config: Config) -> str:
+    """Resolve a stable VM identity from the window title.
+
+    Checks ``config.vm_targets`` for a keyword match first (case-insensitive).
+    Falls back to sanitising the title into a filesystem-safe slug.
+    """
+    title_lower = vm_title.lower()
+    for target in config.vm_targets:
+        if any(kw.lower() in title_lower for kw in target.keywords):
+            return target.name
+
+    # Fallback: derive a slug from the title
+    slug = _SLUG_RE.sub("-", vm_title.lower()).strip("-")
+    return slug[:_MAX_SLUG_LEN] or "unknown"
+
+
 @dataclass
 class TaskRecord:
     """A past task execution retrieved from memory."""
@@ -59,10 +78,15 @@ class TaskRecord:
 
 
 class MemoryStore:
-    """SQLite-backed memory for past task executions with vector search."""
+    """SQLite-backed memory for past task executions with vector search.
 
-    def __init__(self, db_path: Path | None = None):
-        self._db_path = db_path or DEFAULT_DB_PATH
+    Each VM gets its own isolated database under ``<memory_dir>/<vm_id>/memory.db``.
+    """
+
+    def __init__(self, vm_id: str, memory_dir: Path | None = None):
+        base = memory_dir or DEFAULT_MEMORY_DIR
+        self._db_path = base / vm_id / "memory.db"
+        self._vm_id = vm_id
         self._conn: sqlite3.Connection | None = None
         self._embed_client: OpenAI | None = None
 

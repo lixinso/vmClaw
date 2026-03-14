@@ -10,7 +10,11 @@ from typing import Optional
 class NodeRole(Enum):
     HUB = "hub"
     AGENT = "agent"
+    GATEWAY = "gateway"
     HUB_AGENT = "hub+agent"
+    HUB_GATEWAY = "hub+gateway"
+    AGENT_GATEWAY = "agent+gateway"
+    HUB_AGENT_GATEWAY = "hub+agent+gateway"
 
 
 @dataclass

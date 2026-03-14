@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from .models import Config
+from .models import Config, VMTarget
 from .fleet_models import FleetConfig, PeerConfig
 
 try:
@@ -65,6 +65,15 @@ def load_config(path: Path | None = None) -> Config:
         if vm.get("window_keywords"):
             config.window_keywords = vm["window_keywords"]
 
+        # Parse [[vm.targets]] array for per-VM memory identity
+        targets_data = vm.get("targets", [])
+        for target in targets_data:
+            if target.get("name") and target.get("keywords"):
+                config.vm_targets.append(VMTarget(
+                    name=target["name"],
+                    keywords=target["keywords"],
+                ))
+
         # Fleet configuration
         fleet_data = data.get("fleet", {})
         if fleet_data:
@@ -118,3 +127,40 @@ def load_config(path: Path | None = None) -> Config:
         config.provider = "github"
 
     return config
+
+
+def append_peers_to_config(
+    peers: list[PeerConfig],
+    path: Path | None = None,
+) -> Path:
+    """Append new [[fleet.peers]] entries to config.toml.
+
+    Appends raw TOML text to the end of the file. Existing content is not
+    modified. TOML allows [[fleet.peers]] array-of-tables entries anywhere
+    after the [fleet] section.
+
+    Returns:
+        The path that was written to.
+
+    Raises:
+        FileNotFoundError: If no config file is found.
+    """
+    if path is None:
+        path = find_config_file()
+    if path is None:
+        raise FileNotFoundError("No config.toml found. Create one first.")
+
+    lines: list[str] = []
+    for peer in peers:
+        lines.append("")
+        lines.append("[[fleet.peers]]")
+        lines.append(f'name = "{peer.name}"')
+        lines.append(f'url = "{peer.url}"')
+        lines.append(f'token = "{peer.token}"')
+
+    text = "\n".join(lines) + "\n"
+
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(text)
+
+    return path

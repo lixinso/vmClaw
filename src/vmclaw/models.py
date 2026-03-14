@@ -9,6 +9,14 @@ from typing import Optional
 from .fleet_models import FleetConfig, PeerConfig
 
 
+@dataclass
+class VMTarget:
+    """Maps a stable VM identity name to title-matching keywords."""
+
+    name: str
+    keywords: list[str]
+
+
 class ActionType(Enum):
     CLICK = "click"
     TYPE = "type"
@@ -92,4 +100,5 @@ class Config:
             "virtual machine connection",
         ]
     )
+    vm_targets: list[VMTarget] = field(default_factory=list)
     fleet: FleetConfig = field(default_factory=FleetConfig)
