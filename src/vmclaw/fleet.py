@@ -33,7 +33,7 @@ class FleetClient:
         return httpx.Client(
             base_url=peer.url,
             headers=self._headers(peer),
-            timeout=self.timeout,
+            timeout=httpx.Timeout(self.timeout, connect=min(self.timeout, 2.0)),
             verify=False,  # allow self-signed certs on LAN
         )
 
@@ -117,6 +117,36 @@ class FleetClient:
         try:
             with self._client(peer) as client:
                 resp = client.delete(f"/api/task/{task_id}")
+                resp.raise_for_status()
+                return resp.json()
+        except Exception:
+            return None
+
+    def pause_task(self, peer: PeerConfig, task_id: str) -> dict | None:
+        """Pause a running task on a peer."""
+        try:
+            with self._client(peer) as client:
+                resp = client.post(f"/api/task/{task_id}/pause")
+                resp.raise_for_status()
+                return resp.json()
+        except Exception:
+            return None
+
+    def resume_task(self, peer: PeerConfig, task_id: str) -> dict | None:
+        """Resume a paused task on a peer."""
+        try:
+            with self._client(peer) as client:
+                resp = client.post(f"/api/task/{task_id}/resume")
+                resp.raise_for_status()
+                return resp.json()
+        except Exception:
+            return None
+
+    def approve_action(self, peer: PeerConfig, task_id: str, approved: bool = True) -> dict | None:
+        """Approve or reject a pending action on a peer."""
+        try:
+            with self._client(peer) as client:
+                resp = client.post(f"/api/task/{task_id}/approve", json={"approved": approved})
                 resp.raise_for_status()
                 return resp.json()
         except Exception:

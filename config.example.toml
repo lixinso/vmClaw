@@ -68,6 +68,10 @@ listen_port = 8077
 # Auth token to protect this node's API (peers must send this to connect)
 auth_token = ""
 
+# Enable the gateway — serves mobile-facing API routes on the same port
+# Mobile apps connect to this node to control the entire fleet.
+gateway_enabled = false
+
 # Peer nodes to connect to
 # [[fleet.peers]]
 # name = "other-pc"

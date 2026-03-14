@@ -23,3 +23,9 @@ venv/
 # IDE
 .vscode/
 .idea/
+
+# Debug scripts and output
+debug_*.py
+debug_*.txt
+test_output.txt
+test_run.py

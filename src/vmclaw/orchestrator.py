@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import queue
 import threading
 import time
 from typing import TYPE_CHECKING, Any, Callable
@@ -75,6 +76,9 @@ def run_task(
     memory: MemoryStore | None = None,
     on_event: Callable[[str, Any], None] | None = None,
     stop_event: threading.Event | None = None,
+    pause_event: threading.Event | None = None,
+    approval_queue: queue.Queue | None = None,
+    guidance_queue: queue.Queue | None = None,
 ) -> list[Action]:
     """Run the agent loop: capture screenshot, ask AI, execute action, repeat.
 
@@ -85,6 +89,11 @@ def run_task(
         memory: Optional memory store for recalling similar past tasks.
         on_event: Optional callback for structured events. When None, uses print().
         stop_event: Optional threading.Event to signal early stop from another thread.
+        pause_event: Optional threading.Event — when set, pauses before next action.
+        approval_queue: Optional queue — when provided, risky actions block until
+            True/False is put into the queue.
+        guidance_queue: Optional queue — when provided, injected actions are consumed
+            instead of querying AI.
 
     Returns:
         List of actions that were executed.
@@ -117,6 +126,27 @@ def run_task(
             outcome = "stopped"
             break
 
+        # Check for pause signal
+        if pause_event is not None and pause_event.is_set():
+            _emit(on_event, "paused", "Task paused by user")
+            while pause_event.is_set():
+                if stop_event is not None and stop_event.is_set():
+                    break
+                time.sleep(0.3)
+            if stop_event is not None and stop_event.is_set():
+                _emit(on_event, "log", "\nTask stopped while paused.")
+                outcome = "stopped"
+                break
+            _emit(on_event, "resumed", "Task resumed")
+
+        # Check for injected guidance action (skip AI for this step)
+        guided_action: Action | None = None
+        if guidance_queue is not None:
+            try:
+                guided_action = guidance_queue.get_nowait()
+            except queue.Empty:
+                pass
+
         _emit(on_event, "step", step)
 
         # 1. Capture screenshot
@@ -134,24 +164,16 @@ def run_task(
         _emit(on_event, "screenshot", img)
         img_width, img_height = img.size
 
-        # 2. Ask AI for next action
-        _emit(on_event, "log", f"[Step {step}] Analyzing screen...")
-        stuck_hint = _check_repeated_actions(history)
-        if stuck_hint:
-            _emit(on_event, "log", f"[Step {step}] Detected repeated actions, adding hint.")
-        effective_context = memory_context + stuck_hint
-        try:
-            action, usage = ask_ai(
-                img, task, history, config, memory_context=effective_context,
-            )
-            total_usage.prompt_tokens += usage.prompt_tokens
-            total_usage.completion_tokens += usage.completion_tokens
-            total_usage.total_tokens += usage.total_tokens
-            _emit(on_event, "tokens", total_usage)
-        except Exception as e:
-            _emit(on_event, "log", f"[Step {step}] AI error: {e}")
-            _emit(on_event, "log", f"[Step {step}] Retrying...")
-            time.sleep(1.0)
+        # 2. Get next action — from guidance queue or AI
+        if guided_action is not None:
+            action = guided_action
+            _emit(on_event, "log", f"[Step {step}] Using guided action (injected by user)")
+        else:
+            _emit(on_event, "log", f"[Step {step}] Analyzing screen...")
+            stuck_hint = _check_repeated_actions(history)
+            if stuck_hint:
+                _emit(on_event, "log", f"[Step {step}] Detected repeated actions, adding hint.")
+            effective_context = memory_context + stuck_hint
             try:
                 action, usage = ask_ai(
                     img, task, history, config, memory_context=effective_context,
@@ -160,10 +182,22 @@ def run_task(
                 total_usage.completion_tokens += usage.completion_tokens
                 total_usage.total_tokens += usage.total_tokens
                 _emit(on_event, "tokens", total_usage)
-            except Exception as e2:
-                _emit(on_event, "log", f"[Step {step}] AI error on retry: {e2}. Aborting.")
-                outcome = "error"
-                break
+            except Exception as e:
+                _emit(on_event, "log", f"[Step {step}] AI error: {e}")
+                _emit(on_event, "log", f"[Step {step}] Retrying...")
+                time.sleep(1.0)
+                try:
+                    action, usage = ask_ai(
+                        img, task, history, config, memory_context=effective_context,
+                    )
+                    total_usage.prompt_tokens += usage.prompt_tokens
+                    total_usage.completion_tokens += usage.completion_tokens
+                    total_usage.total_tokens += usage.total_tokens
+                    _emit(on_event, "tokens", total_usage)
+                except Exception as e2:
+                    _emit(on_event, "log", f"[Step {step}] AI error on retry: {e2}. Aborting.")
+                    outcome = "error"
+                    break
 
         # 3. Display the action
         action_desc = _format_action(action)
@@ -176,6 +210,20 @@ def run_task(
             history.append(action)
             outcome = "done"
             break
+
+        # 4b. Approval gate — block until approved for sensitive actions
+        if approval_queue is not None and action.action in (ActionType.TYPE, ActionType.KEY):
+            _emit(on_event, "approval_required", action.to_dict())
+            _emit(on_event, "log", f"[Step {step}] Waiting for approval...")
+            try:
+                approved = approval_queue.get(timeout=300)  # 5 min timeout
+            except queue.Empty:
+                approved = False
+            if not approved:
+                _emit(on_event, "log", f"[Step {step}] Action rejected by user.")
+                outcome = "stopped"
+                break
+            _emit(on_event, "log", f"[Step {step}] Action approved.")
 
         # 5. Track consecutive waits (stuck detection)
         if action.action == ActionType.WAIT:

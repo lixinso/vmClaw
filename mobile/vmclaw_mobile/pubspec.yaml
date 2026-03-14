@@ -1,0 +1,38 @@
+name: vmclaw_mobile
+description: vmClaw Fleet Commander — control your AI workforce from your pocket.
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: '>=3.2.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # HTTP client
+  dio: ^5.4.0
+  # WebSocket
+  web_socket_channel: ^2.4.0
+  # State management
+  flutter_riverpod: ^2.4.0
+  riverpod_annotation: ^2.3.0
+  # Navigation
+  go_router: ^13.0.0
+  # Secure token storage
+  flutter_secure_storage: ^9.0.0
+  # Material icons
+  cupertino_icons: ^1.0.6
+  # Image zoom (for screenshot viewer)
+  photo_view: ^0.14.0
+  # Pull-to-refresh
+  pull_to_refresh: ^2.0.0
+  # Timestamp formatting
+  timeago: ^3.6.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true

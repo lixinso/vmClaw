@@ -88,6 +88,8 @@ def load_config(path: Path | None = None) -> Config:
                 fc.listen_port = int(fleet_data["listen_port"])
             if fleet_data.get("auth_token"):
                 fc.auth_token = fleet_data["auth_token"]
+            if "gateway_enabled" in fleet_data:
+                fc.gateway_enabled = bool(fleet_data["gateway_enabled"])
 
             # Parse [[fleet.peers]] array
             peers_data = fleet_data.get("peers", [])

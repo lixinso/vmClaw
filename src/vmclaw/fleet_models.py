@@ -35,6 +35,7 @@ class FleetConfig:
     role: str = "agent"
     listen_port: int = 8077
     auth_token: str = ""
+    gateway_enabled: bool = False
     peers: list[PeerConfig] = field(default_factory=list)
 
 

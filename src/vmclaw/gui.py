@@ -296,6 +296,14 @@ class VmClawGui:
         )
         self._serve_check.pack(padx=5, pady=(0, 2), anchor="w")
 
+        # Gateway checkbox (mobile access)
+        self._gateway_var = tk.BooleanVar(value=self.config.fleet.gateway_enabled)
+        self._gateway_check = ttk.Checkbutton(
+            parent, text="Gateway (Mobile)", variable=self._gateway_var,
+            command=self._on_gateway_toggle,
+        )
+        self._gateway_check.pack(padx=5, pady=(0, 2), anchor="w")
+
         # Serve status label
         self._serve_status_var = tk.StringVar(value="")
         self._serve_status_label = ttk.Label(
@@ -330,6 +338,20 @@ class VmClawGui:
             self._start_serve()
         else:
             self._stop_serve()
+
+    def _on_gateway_toggle(self) -> None:
+        """Handle the Gateway checkbox toggle."""
+        self.config.fleet.gateway_enabled = self._gateway_var.get()
+        state = "enabled" if self.config.fleet.gateway_enabled else "disabled"
+        self._append_log(f"Gateway (mobile access) {state}")
+        if self.config.fleet.gateway_enabled and self._serve_var.get():
+            node = self.config.fleet.node_name or "local"
+            port = self._serve_port or self.config.fleet.listen_port
+            self._serve_status_var.set(f"Listening :{port} ({node}) + Gateway")
+        elif self._serve_var.get():
+            node = self.config.fleet.node_name or "local"
+            port = self._serve_port or self.config.fleet.listen_port
+            self._serve_status_var.set(f"Listening :{port} ({node})")
 
     def _start_serve(self) -> None:
         """Start the fleet server in the background."""
