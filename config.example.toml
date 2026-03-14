@@ -57,7 +57,9 @@ enabled = false
 # Display name for this node in the fleet
 node_name = "my-pc"
 
-# Role: "hub" (coordinator only), "agent" (worker only), or "hub+agent" (both)
+# Role: "hub" (coordinator only), "agent" (worker only), "hub+agent" (both),
+#       or add "+gateway" to expose fleet-wide aggregated API for mobile clients.
+#       Examples: "hub+agent+gateway", "agent+gateway", "gateway"
 role = "hub+agent"
 
 # Port the fleet server listens on

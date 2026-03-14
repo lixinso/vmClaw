@@ -160,6 +160,129 @@ async def forward_task(
         raise HTTPException(status_code=502, detail=f"Forward failed: {err}")
 
 
+# ---------------------------------------------------------------------------
+# Fleet-wide aggregated endpoints (gateway)
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/fleet/nodes")
+async def fleet_list_nodes(_token: str = Depends(_verify_token)) -> list[dict]:
+    """List all nodes in the fleet (self + peers) with their VMs."""
+    from .fleet import FleetClient
+
+    fleet = _get_fleet()
+    config = _get_config()
+
+    nodes = []
+
+    # Local node
+    local_vms = find_vm_windows(config.window_keywords)
+    nodes.append({
+        "node_name": fleet.node_name or "local",
+        "role": fleet.role,
+        "version": __version__,
+        "is_self": True,
+        "reachable": True,
+        "vms": [{"title": vm.title, "hwnd": vm.hwnd} for vm in local_vms],
+    })
+
+    # Remote peers
+    client = FleetClient(fleet)
+    for peer in fleet.peers:
+        info = client.get_info(peer)
+        vms = client.list_vms(peer) if info else []
+        nodes.append({
+            "node_name": peer.name,
+            "role": info.role if info else None,
+            "version": info.version if info else None,
+            "is_self": False,
+            "reachable": info is not None,
+            "vms": vms,
+        })
+
+    return nodes
+
+
+@app.get("/api/fleet/vms")
+async def fleet_list_vms(_token: str = Depends(_verify_token)) -> list[dict]:
+    """Flat list of all VMs across the fleet with their node info."""
+    from .fleet import FleetClient
+
+    fleet = _get_fleet()
+    config = _get_config()
+
+    all_vms = []
+
+    # Local VMs
+    local_vms = find_vm_windows(config.window_keywords)
+    for vm in local_vms:
+        all_vms.append({
+            "node_name": fleet.node_name or "local",
+            "title": vm.title,
+            "is_local": True,
+        })
+
+    # Remote VMs
+    client = FleetClient(fleet)
+    for peer in fleet.peers:
+        vms = client.list_vms(peer)
+        for vm in vms:
+            title = vm if isinstance(vm, str) else vm.get("title", "?")
+            all_vms.append({
+                "node_name": peer.name,
+                "title": title,
+                "is_local": False,
+            })
+
+    return all_vms
+
+
+@app.post("/api/fleet/task")
+async def fleet_submit_task(
+    req: dict,
+    _token: str = Depends(_verify_token),
+) -> dict:
+    """Submit a task to any node in the fleet (auto-routes).
+
+    Requires ``node_name`` and ``vm_title`` fields. If the target is this
+    node, executes locally. Otherwise, forwards to the appropriate peer.
+    """
+    from .fleet import FleetClient
+
+    target_node = req.pop("node_name", None)
+    if not target_node:
+        raise HTTPException(status_code=400, detail="Missing node_name field")
+
+    try:
+        task_req = TaskRequest.from_dict(req)
+    except (KeyError, ValueError) as e:
+        raise HTTPException(status_code=400, detail=f"Bad request: {e}")
+
+    fleet = _get_fleet()
+
+    # Check if the target is this node
+    if target_node == (fleet.node_name or "local"):
+        # Execute locally — reuse the local task endpoint logic
+        return await submit_task(task_req.to_dict(), _token)
+
+    # Forward to remote peer
+    client = FleetClient(fleet)
+    peer = client.find_peer_for_node(target_node)
+    if peer is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown node: {target_node}",
+        )
+
+    result = client.submit_task(peer, task_req)
+    if result and "error" not in result:
+        result["node_name"] = target_node
+        return result
+    else:
+        err = result.get("error", "unknown") if result else "unreachable"
+        raise HTTPException(status_code=502, detail=f"Forward to {target_node} failed: {err}")
+
+
 @app.post("/api/task")
 async def submit_task(
     req: dict,
